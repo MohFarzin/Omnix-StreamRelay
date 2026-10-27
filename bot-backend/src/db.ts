@@ -94,6 +94,8 @@ export function initDb(): void {
     ins.run("discord", "Join our Discord: https://discord.gg/example");
     ins.run("specs", "PC: ask the streamer — bot runs on Omnix StreamRelay VPS.");
   }
+
+  pruneExpiredRefreshTokens();
 }
 
 export function getSetting(key: string): string | null {
@@ -228,4 +230,8 @@ export function consumeRefreshToken(token: string): boolean {
 
 export function revokeAllRefreshTokens(): void {
   db.prepare("DELETE FROM refresh_tokens").run();
+}
+
+export function pruneExpiredRefreshTokens(): void {
+  db.prepare("DELETE FROM refresh_tokens WHERE expires_at <= ?").run(Date.now());
 }

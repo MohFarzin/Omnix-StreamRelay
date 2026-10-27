@@ -18,7 +18,9 @@ export function broadcast(obj: unknown): void {
 
 export function addClient(ws: WebSocket): void {
   clients.add(ws);
-  ws.on("close", () => clients.delete(ws));
+  const drop = () => clients.delete(ws);
+  ws.on("close", drop);
+  ws.on("error", drop);
 }
 
 function shortErr(err: string | null): string | null {
@@ -35,45 +37,55 @@ function shortErr(err: string | null): string | null {
 
 export function startHub(): void {
   onChat((msg: ChatMessage) => broadcast({ type: "chat", ...msg }));
+  let tickBusy = false;
   setInterval(() => {
+    if (tickBusy) return;
+    tickBusy = true;
     void (async () => {
-      const both = await ingestBoth();
-      broadcast({
-        type: "ingest",
-        live: both.main.live,
-        bytesIn: both.main.bytesIn,
-        path: both.main.path,
-        vertical: {
-          live: both.vertical.live,
-          bytesIn: both.vertical.bytesIn,
-          path: both.vertical.path,
-        },
-        chatPlatforms: activePlatforms(),
-        chat: chatDiagnostics(),
-      });
-      const procs = processStatus();
-      for (const t of listTargets()) {
-        const p = procs[t.id];
-        let keyMasked = "******";
-        try {
-          keyMasked = maskKey(decrypt(t.stream_key_enc));
-        } catch {
-          /* ignore */
+      try {
+        for (const ws of [...clients]) {
+          if (ws.readyState !== 1) clients.delete(ws);
         }
-        const err = p?.running ? null : shortErr(t.last_error);
+        const both = await ingestBoth();
         broadcast({
-          type: "target",
-          id: t.id,
-          label: t.label,
-          platform: t.platform,
-          lane: t.lane === "vertical" ? "vertical" : "main",
-          enabled: Boolean(t.enabled),
-          state: p?.running ? "forwarding" : err ? "error" : "idle",
-          error: err,
-          uptimeSec: p?.uptimeSec ?? 0,
-          outboundBytes: p?.outboundApprox ?? 0,
-          keyMasked,
+          type: "ingest",
+          live: both.main.live,
+          bytesIn: both.main.bytesIn,
+          path: both.main.path,
+          vertical: {
+            live: both.vertical.live,
+            bytesIn: both.vertical.bytesIn,
+            path: both.vertical.path,
+          },
+          chatPlatforms: activePlatforms(),
+          chat: chatDiagnostics(),
         });
+        const procs = processStatus();
+        for (const t of listTargets()) {
+          const p = procs[t.id];
+          let keyMasked = "******";
+          try {
+            keyMasked = maskKey(decrypt(t.stream_key_enc));
+          } catch {
+            /* ignore */
+          }
+          const err = p?.running ? null : shortErr(t.last_error);
+          broadcast({
+            type: "target",
+            id: t.id,
+            label: t.label,
+            platform: t.platform,
+            lane: t.lane === "vertical" ? "vertical" : "main",
+            enabled: Boolean(t.enabled),
+            state: p?.running ? "forwarding" : err ? "error" : "idle",
+            error: err,
+            uptimeSec: p?.uptimeSec ?? 0,
+            outboundBytes: p?.outboundApprox ?? 0,
+            keyMasked,
+          });
+        }
+      } finally {
+        tickBusy = false;
       }
     })();
   }, 1500);

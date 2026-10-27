@@ -45,6 +45,9 @@ async function main(): Promise<void> {
     const timer = setTimeout(() => {
       if (!authed) socket.close();
     }, 5000);
+    const clearAuthTimer = () => clearTimeout(timer);
+    socket.on("close", clearAuthTimer);
+    socket.on("error", clearAuthTimer);
 
     socket.on("message", (raw) => {
       void (async () => {
@@ -59,14 +62,17 @@ async function main(): Promise<void> {
             if (msg.type !== "auth" || !msg.token || msg.token.length > 4096) return;
             await verifyAccess(msg.token);
             authed = true;
-            clearTimeout(timer);
+            clearAuthTimer();
             addClient(socket);
             socket.send(JSON.stringify({ type: "auth", ok: true }));
             return;
           }
-          // ignore other client messages for now
         } catch {
-          socket.send(JSON.stringify({ type: "auth", ok: false }));
+          try {
+            socket.send(JSON.stringify({ type: "auth", ok: false }));
+          } catch {
+            /* ignore */
+          }
           socket.close();
         }
       })();

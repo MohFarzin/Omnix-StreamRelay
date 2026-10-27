@@ -1,195 +1,196 @@
 # Omnix StreamRelay
 
-Send **one** OBS (or Aitum) feed to your own server. The server copies that feed out to Twitch, YouTube, Kick, or any RTMP destination — and optionally runs a small multi-chat bot.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![GitHub](https://img.shields.io/badge/GitHub-MohFarzin%2FOmnix--StreamRelay-181717?logo=github)](https://github.com/MohFarzin/Omnix-StreamRelay)
 
-No desktop app. Control is a browser dashboard. No external database (SQLite on disk). Default path is **pasststhrough** (`ffmpeg -c copy`), so a small VPS can push several destinations without melting the CPU.
+Self-hosted multistream relay for creators. Point OBS (or Aitum) at **your** server once; the server fans the same feed out to Twitch, YouTube, Kick, or any custom RTMP destination.
 
-Built for [OmnixStudio](https://github.com/) / self-hosted panels (Pterodactyl / Jexactyl) and plain Docker Compose.
+- Browser dashboard (no desktop app)
+- Passthrough by default (`ffmpeg -c copy`) — light on CPU and RAM
+- Dual ingest: 16:9 main + 9:16 vertical
+- Optional multi-platform chat bot
+- SQLite only (no external database)
+- First-class [Pterodactyl](https://pterodactyl.io/) / Jexactyl egg
 
----
-
-## What you get
-
-| Piece | Role |
-|--------|------|
-| **MediaMTX** | Ingest from OBS (RTMP / SRT) |
-| **Bot (Node)** | Dashboard API, JWT login, starts/stops FFmpeg per destination |
-| **FFmpeg** | Remux to each platform (`-c copy`; optional Kick re-encode via env) |
-| **SQLite** | Encrypted destination keys, commands, welcome state |
-| **Browser UI** | Dark dashboard: destinations, live chat, toggles |
-
-**Dual feed:** main 16:9 and vertical 9:16 on the same host with two stream keys (e.g. `mystream` + `mystream_v`). Composition stays in OBS/Aitum; the relay only fans out.
+**Repository:** https://github.com/MohFarzin/Omnix-StreamRelay  
+**Contact:** admin@omnixstudio.xyz
 
 ---
 
-## Requirements
+## How it works
 
-- Linux host or Pterodactyl Wings node
-- Docker (for the egg / compose image)
-- Ports for dashboard HTTP, RTMP, and SRT (exact numbers are adaptive — see below)
-- OBS (and Aitum if you use vertical)
-
----
-
-## Deploy
-
-### A) Pterodactyl / Jexactyl (recommended)
-
-1. Import [`pterodactyl/egg-omnix-streamrelay.json`](pterodactyl/egg-omnix-streamrelay.json).
-2. On **each** Wings node, from this repo:
-
-```bash
-sudo docker build -t omnix-streamrelay:latest -f pterodactyl/Dockerfile .
+```
+OBS / Aitum ──RTMP/SRT──► your VPS (MediaMTX)
+                              │
+                              ├─► Twitch
+                              ├─► YouTube (16:9 and/or 9:16)
+                              ├─► Kick
+                              └─► custom RTMP
 ```
 
-The egg uses `~omnix-streamrelay:latest` (local image). If that tag is missing, install/start can sit on “Installing…” forever.
-
-3. Allocate ports (host port = container port):
-
-| Role | Egg / env | Typical |
-|------|-----------|---------|
-| Dashboard | primary → `SERVER_PORT` | any free TCP |
-| OBS RTMP | `RTMP_PORT` | `1935` or whatever Wings gave you |
-| SRT | `SRT_PORT` | `8890` or panel UDP alloc |
-
-4. Set `PUBLIC_HOST` to your public DNS. Leave secrets as `auto` on first start, then open `FIRST_LOGIN.txt` / console for the bootstrap token.
-5. Start the server → open `http://PUBLIC_HOST:DASHBOARD_PORT/`.
-
-More detail: [`pterodactyl/README.md`](pterodactyl/README.md).
-
-### B) Docker Compose (bare VPS)
-
-```bash
-git clone https://github.com/YOUR_ORG/Omnix-StreamRelay.git
-cd Omnix-StreamRelay
-cp .env.example .env
-# fill DOMAIN, ACME_EMAIL, and all secrets
-docker compose up -d --build
-```
-
-Point DNS at the VPS before first start if you use Caddy + Let’s Encrypt.
+You manage destinations and chat from the web UI. Stream keys are encrypted at rest.
 
 ---
 
-## OBS setup
+## Quick start (Pterodactyl / Jexactyl)
+
+This is the easiest path for panel hosts.
+
+### 1. Import the egg
+
+1. Panel → **Nests** → create or open nest **OmnixStudio** (or any nest you prefer).
+2. **Import egg** → upload  
+   [`pterodactyl/egg-omnix-streamrelay.json`](pterodactyl/egg-omnix-streamrelay.json)
+3. Save.
+
+The egg image is published automatically from this repo:
+
+`ghcr.io/mohfarzin/omnix-streamrelay:latest`
+
+Wings pulls it when the server starts. You do **not** need to upload source files by hand.
+
+> **First-time GitHub setup (repo owner):** after you push this project, open the Actions tab and confirm the **Docker image** workflow succeeded. In **Packages**, set `omnix-streamrelay` to **Public** so Wings can pull without a token.
+
+### 2. Create a server
+
+1. **Admin → Servers → Create**
+2. Egg: **Omnix StreamRelay**
+3. Allocations (host port = container port):
+
+| Allocation | Purpose | Egg variable |
+|------------|---------|--------------|
+| Primary TCP | Dashboard | used as `SERVER_PORT` |
+| Extra TCP | OBS RTMP | set `RTMP_PORT` to this port |
+| Extra (UDP if possible) | SRT | set `SRT_PORT` to this port |
+
+4. Startup variables (minimum):
+
+| Variable | What to put |
+|----------|-------------|
+| `PUBLIC_HOST` | Your public DNS or IP (e.g. `stream.example.com`) |
+| `RTMP_PORT` | Same number as your RTMP allocation |
+| `SRT_PORT` | Same number as your SRT allocation |
+| Secrets (`BOOTSTRAP_TOKEN`, keys, …) | Leave **`auto`** |
+
+5. Create → wait for install → **Start**.
+
+### 3. Log in
+
+1. Open `http://PUBLIC_HOST:PRIMARY_PORT/`
+2. Read the bootstrap token from the console or `FIRST_LOGIN.txt` on the volume
+3. Paste it into the dashboard login
+
+### 4. Connect OBS
 
 **Main (16:9)**
 
-- Service: Custom  
-- Server: `rtmp://YOUR_HOST:RTMP_PORT/live`  
-- Stream key: `mystream` (or your `STREAM_KEY`)  
-- Auth: **off** (path is the secret)
+| Field | Value |
+|-------|--------|
+| Service | Custom |
+| Server | `rtmp://PUBLIC_HOST:RTMP_PORT/live` |
+| Stream key | `mystream` (or your `STREAM_KEY`) |
+| Authentication | Off |
 
-**Vertical / Aitum (9:16)**
+**Vertical (9:16 / Aitum)** — optional
 
-- Same server URL  
-- Stream key: `mystream_v` (or `STREAM_KEY_VERTICAL`)
+| Field | Value |
+|-------|--------|
+| Server | same as main |
+| Stream key | `mystream_v` (or `STREAM_KEY_VERTICAL`) |
 
-**Output tips (Twitch / Kick)**
+**Recommended encode settings for Twitch / Kick:** CBR, keyframe interval **2**, Kick bitrate ≤ 8000 kbps.
 
-- Rate control: **CBR**  
-- Keyframe interval: **2**  
-- Bitrate: keep Kick ≤ ~8000 kbps  
+### 5. Add destinations
 
-Leave destination toggles **On** in the dashboard. Stop/start OBS as needed — the relay should reconnect without toggling each destination every time.
+In the dashboard:
 
----
+1. Add Twitch / YouTube / Kick / Custom
+2. Choose feed **main** or **vertical**
+3. Paste each platform’s server URL + stream key
+4. Turn **On**
 
-## Dashboard
+Leave destinations On. Stop/start OBS when you go live again — the relay reconnects for you.
 
-1. Log in with the bootstrap token (exchanged for JWT).
-2. Add destinations: name, feed (main / vertical), server URL, stream key.
-3. Turn each destination **On**.
-4. Optional: chat commands + welcome message (needs chat env vars — see below).
-
-| Platform | Server URL | Stream key |
-|----------|------------|------------|
-| Twitch | `rtmp://live.twitch.tv/app` | Twitch key |
-| YouTube | `rtmp://a.rtmp.youtube.com/live2` | YouTube key (reusable key is fine) |
-| Kick | **Paste from Kick Creator** (per-account host) | Kick key |
-| Custom | Your RTMP base | Your key |
-
-Kick’s ingest host is **per account** — don’t hardcode someone else’s URL. Twitch/Kick keys are normally long-lived; YouTube only needs a new key if you reset it or ended that stream setup in Studio.
+**Kick:** paste the Server URL from *your* Kick Creator dashboard (it is per-account).
 
 ---
 
-## Chat bot (optional)
+## Docker Compose (no panel)
 
-Video relay works with chat empty. To enable chat, set egg / `.env` vars and **restart**:
-
-- Twitch: `TWITCH_CHANNEL`, `TWITCH_ACCESS_TOKEN`
-- YouTube: `YOUTUBE_LIVE_CHAT_ID` + API key or OAuth token
-- Kick: `KICK_CHANNEL` (+ `KICK_ACCESS_TOKEN` to reply)
-
----
-
-## Environment (compose)
-
-See [`.env.example`](.env.example). Minimum ideas:
-
-| Variable | Purpose |
-|----------|---------|
-| `MASTER_KEY` | AES-GCM for destination keys in SQLite |
-| `BOOTSTRAP_TOKEN` | First dashboard login |
-| `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` | Session tokens |
-| `STREAM_KEY` / `STREAM_KEY_VERTICAL` | Ingest path segments |
-| `RTMP_PORT` / `SRT_PORT` / `PUBLIC_HOST` | Adaptive ports / URLs |
-| `KICK_TRANSCODE=1` | Optional: re-encode Kick ≤ 8 Mbps (default is copy) |
-
-Generate secrets with `openssl rand -hex 32`.
-
----
-
-## Repo layout
-
+```bash
+git clone https://github.com/MohFarzin/Omnix-StreamRelay.git
+cd Omnix-StreamRelay
+cp .env.example .env
+# edit DOMAIN, ACME_EMAIL, and secrets (openssl rand -hex 32)
+docker compose up -d --build
 ```
-bot-backend/     Node API, FFmpeg manager, chat, SQLite
-client-ui/       Dashboard (static; served by the bot)
-pterodactyl/     Dockerfile, egg JSON, MediaMTX template, start.sh
-relay/           Compose MediaMTX bits
-docker-compose.yml
-Caddyfile        TLS for compose installs
+
+Point DNS at the VPS before first start if you use Caddy + HTTPS.
+
+---
+
+## Optional chat bot
+
+Video works without chat. To enable chat, set these on the egg (or in `.env`) and restart:
+
+| Platform | Variables |
+|----------|-----------|
+| Twitch | `TWITCH_CHANNEL`, `TWITCH_ACCESS_TOKEN` |
+| YouTube | `YOUTUBE_LIVE_CHAT_ID` + API key or OAuth token |
+| Kick | `KICK_CHANNEL` (+ `KICK_ACCESS_TOKEN` to reply) |
+
+---
+
+## Updating
+
+**Panel:** recreate/reinstall the server or pull the new image on Wings, then restart. Image tags update when this GitHub repo builds successfully.
+
+**Compose:**
+
+```bash
+git pull
+docker compose up -d --build
 ```
 
 ---
 
-## Local bot development
+## Project layout
+
+```
+bot-backend/     API, FFmpeg manager, chat, SQLite
+client-ui/       Browser dashboard
+pterodactyl/     Egg JSON, Dockerfile, start scripts
+relay/           Compose MediaMTX helpers
+.github/         CI — builds and pushes the container image
+```
+
+---
+
+## Development
 
 ```bash
 cd bot-backend
 npm install
+npm test
 npm run dev
 ```
 
-You still need MediaMTX (or a full container) reachable with matching env.
-
-```bash
-npm test
-```
+Needs a reachable MediaMTX (or a full container) and the same env vars as production.
 
 ---
 
-## Security
+## Security notes
 
-- Do **not** commit `.env`, `ops/`, SQLite files, or stream keys.
-- Destination keys are encrypted at rest; API/UI only show masked keys.
-- Login is rate-limited; bootstrap compare is timing-safe; API has CSP + body size limits.
-- One operator per server instance — don’t share a single egg login across people; give friends their own node.
-
----
-
-## License / contributing
-
-This project is intended for public use. If you fork it:
-
-1. Change default secrets and tokens.
-2. Build the Docker image on every Wings node you use.
-3. Never paste live stream keys into issues or chat logs.
-
-PRs that keep the copy-first relay path and avoid heavy VPS transcoding are preferred.
+- Never commit `.env`, stream keys, or panel API tokens
+- Destination keys are encrypted (AES-GCM); the API only returns masked keys
+- Login is rate-limited; bootstrap compare is timing-safe
+- One operator per server — give friends their own instance
 
 ---
 
-## Name
+## License
 
-**Omnix StreamRelay** — product line under OmnixStudio. Workspace folder: `Omnix-StreamRelay`.
+This project is licensed under the [MIT License](LICENSE).
+
+Copyright © 2026 OmnixStudio / MohFarzin  
+Contact: admin@omnixstudio.xyz

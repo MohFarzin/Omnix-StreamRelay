@@ -2,6 +2,20 @@ import { timingSafeEqual } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 
 const loginHits = new Map<string, { n: number; reset: number }>();
+const LOGIN_HIT_CAP = 5000;
+
+function pruneLoginHits(now: number): void {
+  for (const [ip, row] of loginHits) {
+    if (now > row.reset) loginHits.delete(ip);
+  }
+  if (loginHits.size <= LOGIN_HIT_CAP) return;
+  const overflow = loginHits.size - LOGIN_HIT_CAP;
+  let i = 0;
+  for (const ip of loginHits.keys()) {
+    loginHits.delete(ip);
+    if (++i >= overflow) break;
+  }
+}
 
 export function timingSafeStringEq(a: string, b: string): boolean {
   const ba = Buffer.from(a);
@@ -15,6 +29,7 @@ export function timingSafeStringEq(a: string, b: string): boolean {
 
 export function rateLimitLogin(ip: string, limit = 20, windowMs = 60_000): boolean {
   const now = Date.now();
+  if (loginHits.size > 64) pruneLoginHits(now);
   const row = loginHits.get(ip);
   if (!row || now > row.reset) {
     loginHits.set(ip, { n: 1, reset: now + windowMs });

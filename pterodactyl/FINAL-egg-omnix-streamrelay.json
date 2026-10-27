@@ -3,13 +3,14 @@
     "version": "PTDL_v2",
     "update_url": null
   },
-  "exported_at": "2026-10-26T16:05:00+00:00",
+  "exported_at": "2026-10-27T15:30:00+00:00",
   "name": "Omnix StreamRelay",
-  "author": "admin@omnixstudio.com",
-  "description": "Multistream relay + chat. Primary allocation = dashboard. Set RTMP_PORT and SRT_PORT to your other allocations. Image MUST exist on the Wings node: docker build -t omnix-streamrelay:latest -f pterodactyl/Dockerfile .",
+  "author": "admin@omnixstudio.xyz",
+  "description": "Multistream relay + optional chat. Image pulls from ghcr.io/mohfarzin/omnix-streamrelay (built from https://github.com/MohFarzin/Omnix-StreamRelay). Primary allocation = dashboard; set RTMP_PORT and SRT_PORT to match your other allocations.",
   "features": null,
   "docker_images": {
-    "Omnix StreamRelay": "~omnix-streamrelay:latest"
+    "GHCR (recommended)": "ghcr.io/mohfarzin/omnix-streamrelay:latest",
+    "Local Wings build": "~omnix-streamrelay:latest"
   },
   "file_denylist": [],
   "startup": "bash /opt/omnix/start.sh",
@@ -21,7 +22,7 @@
   },
   "scripts": {
     "installation": {
-      "script": "#!/bin/ash\ncd /mnt/server || true\nmkdir -p data logs\nprintf '%s\\n' \\\n'Omnix StreamRelay — install OK' \\\n'===============================' \\\n'If the panel stuck on Installing before: the egg image was missing on this node.' \\\n'On the Wings host (SSH), from the Live-Stream repo:' \\\n'  sudo docker build -t omnix-streamrelay:latest -f pterodactyl/Dockerfile .' \\\n'Then Start (or Reinstall once image exists).' \\\n'' \\\n'Ports (Ptero host port = container port):' \\\n'  Primary SERVER_PORT  = dashboard HTTP' \\\n'  Egg RTMP_PORT        = OBS RTMP (often 1935)' \\\n'  Egg SRT_PORT         = SRT UDP (often 8890)' \\\n'Set PUBLIC_HOST to the public DNS (e.g. mumbai.war67.online).' \\\n'Leave secrets as auto. Open FIRST_LOGIN.txt after start.' \\\n> README-OMNIX.txt\ndate -u > .omnix-installed\nsync\necho Install complete\nexit 0\n",
+      "script": "#!/bin/ash\nset -e\ncd /mnt/server || exit 1\nmkdir -p data logs\n\nREPO_URL=\"https://github.com/MohFarzin/Omnix-StreamRelay\"\nRAW_README=\"https://raw.githubusercontent.com/MohFarzin/Omnix-StreamRelay/master/README.md\"\n\nif command -v curl >/dev/null 2>&1; then\n  curl -fsSL \"$RAW_README\" -o README-FROM-GITHUB.md 2>/dev/null || true\nelif command -v wget >/dev/null 2>&1; then\n  wget -q -O README-FROM-GITHUB.md \"$RAW_README\" 2>/dev/null || true\nfi\n\ncat > README-OMNIX.txt << EOF\nOmnix StreamRelay — install complete\n====================================\nSource: ${REPO_URL}\nImage:  ghcr.io/mohfarzin/omnix-streamrelay:latest\n        (Wings pulls this automatically — no manual upload)\n\n1. Set PUBLIC_HOST, RTMP_PORT, SRT_PORT to match allocations.\n2. Leave secrets as auto.\n3. Start the server.\n4. Open http://PUBLIC_HOST:PRIMARY_PORT/ and log in with the\n   token from console / FIRST_LOGIN.txt.\n\nOBS main:     rtmp://PUBLIC_HOST:RTMP_PORT/live   key=mystream\nOBS vertical: same server                         key=mystream_v\nEOF\n\ndate -u > .omnix-installed\necho \"$REPO_URL\" > .omnix-source\nsync\necho Install complete\nexit 0\n",
       "container": "ghcr.io/pterodactyl/installers:alpine",
       "entrypoint": "ash"
     }
@@ -29,7 +30,7 @@
   "variables": [
     {
       "name": "Public Host",
-      "description": "DNS or public IP shown in FIRST_LOGIN / OBS URLs (e.g. abudhabi.war67.online).",
+      "description": "DNS or public IP shown in FIRST_LOGIN / OBS URLs.",
       "env_variable": "PUBLIC_HOST",
       "default_value": "",
       "user_viewable": true,
@@ -39,7 +40,7 @@
     },
     {
       "name": "RTMP Port",
-      "description": "Must match your RTMP allocation port (container listens on this). Use 1935 if that allocation exists; else your extra TCP port (e.g. 19147).",
+      "description": "Must match your RTMP allocation (container listens on this port).",
       "env_variable": "RTMP_PORT",
       "default_value": "1935",
       "user_viewable": true,
@@ -49,7 +50,7 @@
     },
     {
       "name": "SRT Port",
-      "description": "Must match your SRT allocation (UDP preferred). Use 8890 if available; else your other extra port.",
+      "description": "Must match your SRT allocation (UDP preferred).",
       "env_variable": "SRT_PORT",
       "default_value": "8890",
       "user_viewable": true,
@@ -59,7 +60,7 @@
     },
     {
       "name": "Dashboard Port Override",
-      "description": "Leave empty to use primary allocation (SERVER_PORT). Only set if you need to force dashboard off the primary.",
+      "description": "Leave empty to use primary allocation (SERVER_PORT).",
       "env_variable": "DASHBOARD_PORT",
       "default_value": "",
       "user_viewable": true,
@@ -69,7 +70,7 @@
     },
     {
       "name": "Bootstrap Token",
-      "description": "Dashboard login password. Use auto to generate on first start (console + FIRST_LOGIN.txt).",
+      "description": "Dashboard login. Use auto to generate on first start.",
       "env_variable": "BOOTSTRAP_TOKEN",
       "default_value": "auto",
       "user_viewable": true,
@@ -79,7 +80,7 @@
     },
     {
       "name": "OBS Publish Password",
-      "description": "Internal/legacy. OBS auth is OFF — leave auto.",
+      "description": "Legacy. OBS auth is OFF — leave auto.",
       "env_variable": "MTX_PUBLISH_PASS",
       "default_value": "auto",
       "user_viewable": true,
@@ -88,10 +89,20 @@
       "field_type": "text"
     },
     {
-      "name": "Ingest Stream Key",
-      "description": "OBS stream key (path after /live/). Default mystream is fine.",
+      "name": "Ingest Stream Key (main)",
+      "description": "OBS main stream key (path after /live/).",
       "env_variable": "STREAM_KEY",
       "default_value": "mystream",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|max:64",
+      "field_type": "text"
+    },
+    {
+      "name": "Ingest Stream Key (vertical)",
+      "description": "Aitum / 9:16 key. Defaults to mystream_v if empty at runtime when unset in older panels.",
+      "env_variable": "STREAM_KEY_VERTICAL",
+      "default_value": "mystream_v",
       "user_viewable": true,
       "user_editable": true,
       "rules": "required|string|max:64",
@@ -139,7 +150,7 @@
     },
     {
       "name": "OPTIONAL Twitch Channel",
-      "description": "Leave EMPTY unless you want Twitch chat now.",
+      "description": "Leave empty unless you want Twitch chat.",
       "env_variable": "TWITCH_CHANNEL",
       "default_value": "",
       "user_viewable": true,
@@ -149,7 +160,7 @@
     },
     {
       "name": "OPTIONAL Twitch Token",
-      "description": "Leave EMPTY for now.",
+      "description": "Twitch chat OAuth token. Leave empty if unused.",
       "env_variable": "TWITCH_ACCESS_TOKEN",
       "default_value": "",
       "user_viewable": false,
@@ -159,7 +170,7 @@
     },
     {
       "name": "OPTIONAL YouTube Live Chat ID",
-      "description": "Leave EMPTY for now (video restream does not need this).",
+      "description": "Leave empty if you only need video restream.",
       "env_variable": "YOUTUBE_LIVE_CHAT_ID",
       "default_value": "",
       "user_viewable": true,
@@ -169,7 +180,7 @@
     },
     {
       "name": "OPTIONAL YouTube API Key",
-      "description": "Leave EMPTY for now.",
+      "description": "Leave empty if unused.",
       "env_variable": "YOUTUBE_API_KEY",
       "default_value": "",
       "user_viewable": false,
@@ -179,7 +190,7 @@
     },
     {
       "name": "OPTIONAL Kick Channel",
-      "description": "Leave EMPTY for now.",
+      "description": "Leave empty if unused.",
       "env_variable": "KICK_CHANNEL",
       "default_value": "",
       "user_viewable": true,
@@ -189,7 +200,7 @@
     },
     {
       "name": "OPTIONAL Kick Token",
-      "description": "Leave EMPTY for now.",
+      "description": "Leave empty if unused.",
       "env_variable": "KICK_ACCESS_TOKEN",
       "default_value": "",
       "user_viewable": false,

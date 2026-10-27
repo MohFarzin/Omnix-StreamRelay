@@ -1,31 +1,34 @@
-# Omnix StreamRelay — Pterodactyl egg
+# Pterodactyl / Jexactyl — Omnix StreamRelay
 
-## Final egg
+## Egg file
 
-Import/update: **`egg-omnix-streamrelay.json`**
+Import **`egg-omnix-streamrelay.json`** (same contents as `FINAL-egg-omnix-streamrelay.json`).
 
-## Before first start (fixes “Installing…” freeze)
+- Author: `admin@omnixstudio.xyz`
+- Source: https://github.com/MohFarzin/Omnix-StreamRelay
+- Default image: `ghcr.io/mohfarzin/omnix-streamrelay:latest`
 
-On **each** Wings node, build the local image (tilde `~` = no registry pull):
+Wings **pulls the image from GitHub Container Registry**. You do not upload the project zip into the server volume for the app to run.
 
-```bash
-sudo docker build -t omnix-streamrelay:latest -f pterodactyl/Dockerfile .
-```
+Optional image in the egg dropdown: `~omnix-streamrelay:latest` for admins who still build locally on the node.
 
-Install script only creates `data/`, `logs/`, `README-OMNIX.txt`. It does **not** pull the app image.
+## Operator steps
 
-## Ports (adaptive)
+1. Import the egg into a nest.
+2. Create a server with 3 allocations (dashboard + RTMP + SRT).
+3. Set `PUBLIC_HOST`, `RTMP_PORT`, `SRT_PORT`. Leave secrets as `auto`.
+4. Start → open the dashboard → login with bootstrap token from console / `FIRST_LOGIN.txt`.
 
-| Allocation | Egg / env | Use |
-|------------|-----------|-----|
-| Primary | `SERVER_PORT` | Dashboard HTTP |
-| Extra | `RTMP_PORT` (default 1935) | OBS RTMP |
-| Extra | `SRT_PORT` (default 8890) | SRT UDP |
+## Ports
 
-Set `PUBLIC_HOST` to the public DNS. Optional `DASHBOARD_PORT` overrides primary.
+| Role | Variable | Notes |
+|------|----------|--------|
+| Dashboard | primary → `SERVER_PORT` | optional `DASHBOARD_PORT` override |
+| RTMP | `RTMP_PORT` | must match allocation |
+| SRT | `SRT_PORT` | UDP preferred |
 
-Host port = container port (Ptero). MediaMTX binds RTMP/SRT to those numbers.
+Host port = container port.
 
-## Startup done string
+## Publishing the image (maintainers)
 
-Console must eventually print `Omnix StreamRelay bot on` (from Node). Startup config looks for that marker.
+Push to `master`/`main` runs `.github/workflows/docker-image.yml`, which builds `pterodactyl/Dockerfile` and pushes to GHCR. Make the package **public** so panel nodes can pull without credentials.

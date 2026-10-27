@@ -216,6 +216,9 @@ function startOne(t: StreamTarget): void {
   child.stderr.on("data", (chunk: Buffer) => {
     errBuf = (errBuf + chunk.toString()).slice(-2000);
   });
+  child.on("error", () => {
+    if (procs.get(t.id)?.child === child) procs.delete(t.id);
+  });
   child.on("exit", (code, signal) => {
     const wasStopping = state.stopping || signal === "SIGTERM" || signal === "SIGKILL";
     const uptime = Date.now() - state.startedAt;
@@ -235,6 +238,17 @@ function startOne(t: StreamTarget): void {
       setTargetError(t.id, `Relay ended early (retry in ${Math.round(wait / 1000)}s)`);
     }
   });
+}
+
+function pruneRelayMaps(): void {
+  const now = Date.now();
+  const alive = new Set(listTargets().map((t) => t.id));
+  for (const id of [...backoffUntil.keys()]) {
+    if (!alive.has(id) || (backoffUntil.get(id) ?? 0) <= now) backoffUntil.delete(id);
+  }
+  for (const id of [...failStreak.keys()]) {
+    if (!alive.has(id)) failStreak.delete(id);
+  }
 }
 
 export function resetTargetBackoff(id: string): void {
@@ -302,6 +316,7 @@ function clearYoutubeWarmups(): void {
 }
 
 export async function reconcile(): Promise<void> {
+  pruneRelayMaps();
   const both = await ingestBoth();
   const stableNow: Record<IngestLane, boolean> = { main: false, vertical: false };
 
@@ -369,11 +384,18 @@ export async function reconcile(): Promise<void> {
 }
 
 let timer: NodeJS.Timeout | null = null;
+let reconcileBusy = false;
 
 export function startReconcileLoop(ms = 1000): void {
   if (timer) return;
   timer = setInterval(() => {
-    void reconcile().catch(() => undefined);
+    if (reconcileBusy) return;
+    reconcileBusy = true;
+    void reconcile()
+      .catch(() => undefined)
+      .finally(() => {
+        reconcileBusy = false;
+      });
   }, ms);
 }
 
