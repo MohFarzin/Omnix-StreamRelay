@@ -7,7 +7,7 @@ Self-hosted multistream relay for creators. Point OBS (or Aitum) at **your** ser
 
 - Browser dashboard (no desktop app)
 - Passthrough by default (`ffmpeg -c copy`) — light on CPU and RAM
-- Dual ingest: 16:9 main + 9:16 vertical
+- Dual ingest: 16:9 main + 9:16 vertical ([Aitum setup guide](docs/VERTICAL-AITUM.md))
 - Optional multi-platform chat bot
 - SQLite only (no external database)
 - First-class [Pterodactyl](https://pterodactyl.io/) / Jexactyl egg
@@ -91,12 +91,11 @@ Wings pulls it when the server starts. You do **not** need to upload source file
 | Stream key | `mystream` (or your `STREAM_KEY`) |
 | Authentication | Off |
 
-**Vertical (9:16 / Aitum)** — optional
+**Vertical (9:16)** — optional  
 
-| Field | Value |
-|-------|--------|
-| Server | same as main |
-| Stream key | `mystream_v` (or `STREAM_KEY_VERTICAL`) |
+Use [Aitum Vertical](https://obsproject.com/forum/resources/aitum-vertical.1715/) + [Aitum Multistream](https://obsproject.com/forum/resources/aitum-multistream.1991/) (or a second OBS). Same server URL, stream key `mystream_v`.
+
+→ Full walkthrough: **[Vertical / Aitum guide](docs/VERTICAL-AITUM.md)**
 
 **Recommended encode settings for Twitch / Kick:** CBR, keyframe interval **2**, Kick bitrate ≤ 8000 kbps.
 
@@ -154,12 +153,19 @@ docker compose up -d --build
 
 ---
 
+## Docs
+
+| Guide | Topic |
+|-------|--------|
+| [Vertical / Aitum](docs/VERTICAL-AITUM.md) | 9:16 feed, Aitum plugins, second OBS option |
+
 ## Project layout
 
 ```
 bot-backend/     API, FFmpeg manager, chat, SQLite
 client-ui/       Browser dashboard
 pterodactyl/     Egg JSON, Dockerfile, start scripts
+docs/            Extra guides (vertical / Aitum, …)
 relay/           Compose MediaMTX helpers
 .github/         CI — builds and pushes the container image
 ```
