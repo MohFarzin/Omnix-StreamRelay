@@ -1,0 +1,13 @@
+.env
+ops/
+node_modules/
+bot-backend/node_modules/
+bot-backend/dist/
+bot-backend/data/
+*.sqlite
+*.log
+.DS_Store
+.cursor/rules/project-canon.mdc
+.dockerignore
+PLAN.md
+omnix-build.tgz

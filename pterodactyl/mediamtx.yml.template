@@ -1,0 +1,33 @@
+# Generated at container start — ports from egg / SERVER_PORT
+logLevel: info
+api: yes
+apiAddress: :9997
+
+rtmp: yes
+rtmpAddress: :RTMP_PORT
+srt: yes
+srtAddress: :SRT_PORT
+rtsp: yes
+rtspAddress: :8554
+webrtc: no
+hls: no
+
+# Publish auth off for OBS/Streamlabs — protect by STREAM_KEY path.
+# API still password-protected.
+authMethod: internal
+authInternalUsers:
+  - user: any
+    pass:
+    permissions:
+      - action: read
+      - action: playback
+      - action: publish
+        path: ~^live/.+$
+  - user: admin
+    pass: "API_PASS"
+    permissions:
+      - action: api
+      - action: metrics
+
+paths:
+  ~^live/.+$:

@@ -1,0 +1,35 @@
+# Omnix StreamRelay — MediaMTX ingest only (fan-out is FFmpeg via bot-backend)
+logLevel: info
+api: yes
+apiAddress: :9997
+
+rtmp: yes
+rtmpAddress: :1935
+srt: yes
+srtAddress: :8890
+rtsp: yes
+rtspAddress: :8554
+webrtc: no
+hls: no
+
+# Placeholders replaced by entrypoint from MTX_PUBLISH_PASS / MTX_API_PASS
+authMethod: internal
+authInternalUsers:
+  - user: any
+    pass:
+    permissions:
+      - action: read
+      - action: playback
+  - user: publisher
+    pass: "PUBLISH_PASS"
+    permissions:
+      - action: publish
+        path: ~^live/.+$
+  - user: admin
+    pass: "API_PASS"
+    permissions:
+      - action: api
+      - action: metrics
+
+paths:
+  ~^live/.+$:

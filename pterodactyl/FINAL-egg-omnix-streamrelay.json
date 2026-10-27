@@ -1,0 +1,201 @@
+{
+  "meta": {
+    "version": "PTDL_v2",
+    "update_url": null
+  },
+  "exported_at": "2026-10-26T16:05:00+00:00",
+  "name": "Omnix StreamRelay",
+  "author": "admin@omnixstudio.com",
+  "description": "Multistream relay + chat. Primary allocation = dashboard. Set RTMP_PORT and SRT_PORT to your other allocations. Image MUST exist on the Wings node: docker build -t omnix-streamrelay:latest -f pterodactyl/Dockerfile .",
+  "features": null,
+  "docker_images": {
+    "Omnix StreamRelay": "~omnix-streamrelay:latest"
+  },
+  "file_denylist": [],
+  "startup": "bash /opt/omnix/start.sh",
+  "config": {
+    "files": "{}",
+    "startup": "{\n    \"done\": \"Omnix StreamRelay bot on\"\n}",
+    "logs": "{}",
+    "stop": "^C"
+  },
+  "scripts": {
+    "installation": {
+      "script": "#!/bin/ash\ncd /mnt/server || true\nmkdir -p data logs\nprintf '%s\\n' \\\n'Omnix StreamRelay — install OK' \\\n'===============================' \\\n'If the panel stuck on Installing before: the egg image was missing on this node.' \\\n'On the Wings host (SSH), from the Live-Stream repo:' \\\n'  sudo docker build -t omnix-streamrelay:latest -f pterodactyl/Dockerfile .' \\\n'Then Start (or Reinstall once image exists).' \\\n'' \\\n'Ports (Ptero host port = container port):' \\\n'  Primary SERVER_PORT  = dashboard HTTP' \\\n'  Egg RTMP_PORT        = OBS RTMP (often 1935)' \\\n'  Egg SRT_PORT         = SRT UDP (often 8890)' \\\n'Set PUBLIC_HOST to the public DNS (e.g. mumbai.war67.online).' \\\n'Leave secrets as auto. Open FIRST_LOGIN.txt after start.' \\\n> README-OMNIX.txt\ndate -u > .omnix-installed\nsync\necho Install complete\nexit 0\n",
+      "container": "ghcr.io/pterodactyl/installers:alpine",
+      "entrypoint": "ash"
+    }
+  },
+  "variables": [
+    {
+      "name": "Public Host",
+      "description": "DNS or public IP shown in FIRST_LOGIN / OBS URLs (e.g. abudhabi.war67.online).",
+      "env_variable": "PUBLIC_HOST",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string|max:255",
+      "field_type": "text"
+    },
+    {
+      "name": "RTMP Port",
+      "description": "Must match your RTMP allocation port (container listens on this). Use 1935 if that allocation exists; else your extra TCP port (e.g. 19147).",
+      "env_variable": "RTMP_PORT",
+      "default_value": "1935",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|max:8",
+      "field_type": "text"
+    },
+    {
+      "name": "SRT Port",
+      "description": "Must match your SRT allocation (UDP preferred). Use 8890 if available; else your other extra port.",
+      "env_variable": "SRT_PORT",
+      "default_value": "8890",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|max:8",
+      "field_type": "text"
+    },
+    {
+      "name": "Dashboard Port Override",
+      "description": "Leave empty to use primary allocation (SERVER_PORT). Only set if you need to force dashboard off the primary.",
+      "env_variable": "DASHBOARD_PORT",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string|max:8",
+      "field_type": "text"
+    },
+    {
+      "name": "Bootstrap Token",
+      "description": "Dashboard login password. Use auto to generate on first start (console + FIRST_LOGIN.txt).",
+      "env_variable": "BOOTSTRAP_TOKEN",
+      "default_value": "auto",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|min:4",
+      "field_type": "text"
+    },
+    {
+      "name": "OBS Publish Password",
+      "description": "Internal/legacy. OBS auth is OFF — leave auto.",
+      "env_variable": "MTX_PUBLISH_PASS",
+      "default_value": "auto",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|min:4",
+      "field_type": "text"
+    },
+    {
+      "name": "Ingest Stream Key",
+      "description": "OBS stream key (path after /live/). Default mystream is fine.",
+      "env_variable": "STREAM_KEY",
+      "default_value": "mystream",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|max:64",
+      "field_type": "text"
+    },
+    {
+      "name": "Master Key",
+      "description": "Encrypts destination keys. Leave auto.",
+      "env_variable": "MASTER_KEY",
+      "default_value": "auto",
+      "user_viewable": false,
+      "user_editable": false,
+      "rules": "required|string|min:4",
+      "field_type": "text"
+    },
+    {
+      "name": "JWT Access Secret",
+      "description": "Internal. Leave auto.",
+      "env_variable": "JWT_ACCESS_SECRET",
+      "default_value": "auto",
+      "user_viewable": false,
+      "user_editable": false,
+      "rules": "required|string|min:4",
+      "field_type": "text"
+    },
+    {
+      "name": "JWT Refresh Secret",
+      "description": "Internal. Leave auto.",
+      "env_variable": "JWT_REFRESH_SECRET",
+      "default_value": "auto",
+      "user_viewable": false,
+      "user_editable": false,
+      "rules": "required|string|min:4",
+      "field_type": "text"
+    },
+    {
+      "name": "MediaMTX API Password",
+      "description": "Internal. Leave auto.",
+      "env_variable": "MTX_API_PASS",
+      "default_value": "auto",
+      "user_viewable": false,
+      "user_editable": false,
+      "rules": "required|string|min:4",
+      "field_type": "text"
+    },
+    {
+      "name": "OPTIONAL Twitch Channel",
+      "description": "Leave EMPTY unless you want Twitch chat now.",
+      "env_variable": "TWITCH_CHANNEL",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string|max:64",
+      "field_type": "text"
+    },
+    {
+      "name": "OPTIONAL Twitch Token",
+      "description": "Leave EMPTY for now.",
+      "env_variable": "TWITCH_ACCESS_TOKEN",
+      "default_value": "",
+      "user_viewable": false,
+      "user_editable": true,
+      "rules": "nullable|string",
+      "field_type": "text"
+    },
+    {
+      "name": "OPTIONAL YouTube Live Chat ID",
+      "description": "Leave EMPTY for now (video restream does not need this).",
+      "env_variable": "YOUTUBE_LIVE_CHAT_ID",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string",
+      "field_type": "text"
+    },
+    {
+      "name": "OPTIONAL YouTube API Key",
+      "description": "Leave EMPTY for now.",
+      "env_variable": "YOUTUBE_API_KEY",
+      "default_value": "",
+      "user_viewable": false,
+      "user_editable": true,
+      "rules": "nullable|string",
+      "field_type": "text"
+    },
+    {
+      "name": "OPTIONAL Kick Channel",
+      "description": "Leave EMPTY for now.",
+      "env_variable": "KICK_CHANNEL",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string|max:64",
+      "field_type": "text"
+    },
+    {
+      "name": "OPTIONAL Kick Token",
+      "description": "Leave EMPTY for now.",
+      "env_variable": "KICK_ACCESS_TOKEN",
+      "default_value": "",
+      "user_viewable": false,
+      "user_editable": true,
+      "rules": "nullable|string",
+      "field_type": "text"
+    }
+  ]
+}

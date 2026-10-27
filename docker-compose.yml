@@ -1,0 +1,102 @@
+services:
+  relay:
+    build: ./relay
+    container_name: omnix-relay
+    restart: unless-stopped
+    ports:
+      - "1935:1935"   # RTMP ingest
+      - "8890:8890/udp" # SRT ingest
+    environment:
+      MTX_PUBLISH_PASS: ${MTX_PUBLISH_PASS}
+      MTX_API_PASS: ${MTX_API_PASS}
+    networks:
+      - omnix-net
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -qO- --user=admin --password=\"$$MTX_API_PASS\" http://127.0.0.1:9997/v3/paths/list >/dev/null",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  bot:
+    build:
+      context: .
+      dockerfile: bot-backend/Dockerfile
+    container_name: omnix-bot
+    restart: unless-stopped
+    depends_on:
+      relay:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: "8080"
+      DATA_DIR: /data
+      MASTER_KEY: ${MASTER_KEY}
+      BOOTSTRAP_TOKEN: ${BOOTSTRAP_TOKEN}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      MTX_API_URL: http://relay:9997
+      MTX_API_USER: admin
+      MTX_API_PASS: ${MTX_API_PASS}
+      MTX_RTSP_BASE: rtsp://relay:8554
+      INGEST_PATH_PREFIX: live
+      STREAM_KEY: ${STREAM_KEY}
+      TWITCH_CLIENT_ID: ${TWITCH_CLIENT_ID:-}
+      TWITCH_CLIENT_SECRET: ${TWITCH_CLIENT_SECRET:-}
+      TWITCH_ACCESS_TOKEN: ${TWITCH_ACCESS_TOKEN:-}
+      TWITCH_REFRESH_TOKEN: ${TWITCH_REFRESH_TOKEN:-}
+      TWITCH_CHANNEL: ${TWITCH_CHANNEL:-}
+      TWITCH_BOT_USER_ID: ${TWITCH_BOT_USER_ID:-}
+      YOUTUBE_API_KEY: ${YOUTUBE_API_KEY:-}
+      YOUTUBE_ACCESS_TOKEN: ${YOUTUBE_ACCESS_TOKEN:-}
+      YOUTUBE_REFRESH_TOKEN: ${YOUTUBE_REFRESH_TOKEN:-}
+      YOUTUBE_CLIENT_ID: ${YOUTUBE_CLIENT_ID:-}
+      YOUTUBE_CLIENT_SECRET: ${YOUTUBE_CLIENT_SECRET:-}
+      YOUTUBE_LIVE_CHAT_ID: ${YOUTUBE_LIVE_CHAT_ID:-}
+      KICK_CLIENT_ID: ${KICK_CLIENT_ID:-}
+      KICK_CLIENT_SECRET: ${KICK_CLIENT_SECRET:-}
+      KICK_ACCESS_TOKEN: ${KICK_ACCESS_TOKEN:-}
+      KICK_CHANNEL: ${KICK_CHANNEL:-}
+    volumes:
+      - bot-data:/data
+    networks:
+      - omnix-net
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/api/v1/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  caddy:
+    image: caddy:2.9-alpine
+    container_name: omnix-caddy
+    restart: unless-stopped
+    depends_on:
+      bot:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - omnix-net
+
+networks:
+  omnix-net:
+    driver: bridge
+
+volumes:
+  bot-data:
+  caddy-data:
+  caddy-config:

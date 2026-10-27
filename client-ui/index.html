@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <title>Omnix StreamRelay</title>
+  <link rel="stylesheet" href="/styles.css?v=20261027ui8" />
+</head>
+<body>
+  <div id="login" class="panel login">
+    <h1>Omnix StreamRelay</h1>
+    <p class="sub">Connect with the bootstrap token from <code>FIRST_LOGIN.txt</code>.</p>
+    <label>Bootstrap token
+      <input id="bootstrap" type="password" autocomplete="current-password" />
+    </label>
+    <button id="loginBtn" type="button">Connect</button>
+    <p id="loginErr" class="err" hidden></p>
+  </div>
+
+  <div id="app" class="app" hidden>
+    <header>
+      <div>
+        <strong>Omnix StreamRelay</strong>
+        <span id="ingestBadge" class="badge">idle</span>
+      </div>
+      <div class="header-actions">
+        <button id="helpBtn" type="button" class="ghost help-btn" title="How to set up" aria-label="How to set up">?</button>
+        <button id="logoutBtn" type="button" class="ghost">Logout</button>
+      </div>
+    </header>
+
+    <section id="setup" class="panel setup">
+      <div class="setup-head">
+        <div>
+          <h2>Connection</h2>
+          <p class="sub" id="setupHost">Loading…</p>
+        </div>
+        <button id="toggleConnBtn" type="button" class="ghost" aria-expanded="false">Show details</button>
+      </div>
+      <div id="connDetails" class="setup-grid" hidden>
+        <p class="hint">Custom RTMP · leave auth <strong>OFF</strong> in OBS. Main = 16:9 · Vertical = Aitum 9:16.</p>
+        <div class="copy-row">
+          <span>Server</span>
+          <code id="obsServer">…</code>
+          <button type="button" class="ghost" data-copy="obsServer">Copy</button>
+        </div>
+        <div class="copy-row">
+          <span>Main key</span>
+          <code id="obsKey">…</code>
+          <button type="button" class="ghost" data-copy="obsKey">Copy</button>
+        </div>
+        <div class="copy-row">
+          <span>Vertical</span>
+          <code id="obsKeyV">…</code>
+          <button type="button" class="ghost" data-copy="obsKeyV">Copy</button>
+        </div>
+        <div class="copy-row">
+          <span>SRT main</span>
+          <code id="srtUrl">…</code>
+          <button type="button" class="ghost" data-copy="srtUrl">Copy</button>
+        </div>
+        <div class="copy-row">
+          <span>SRT vert</span>
+          <code id="srtUrlV">…</code>
+          <button type="button" class="ghost" data-copy="srtUrlV">Copy</button>
+        </div>
+        <div class="copy-row">
+          <span>Dashboard</span>
+          <code id="dashUrl">…</code>
+          <button type="button" class="ghost" data-copy="dashUrl">Copy</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="chatPanel" class="panel chat-panel chat-hero chat-collapsed">
+      <div class="chat-head">
+        <div>
+          <h2>Live chat</h2>
+          <div id="chatStatus" class="hint">Checking…</div>
+        </div>
+        <button id="toggleChatBtn" type="button" class="ghost" aria-expanded="false">Expand</button>
+      </div>
+      <div id="chatBody" class="chat-body" hidden>
+        <div id="chat" class="chat"><p class="empty">Waiting for chat…</p></div>
+        <form id="sendForm" class="send">
+          <input name="text" placeholder="Reply as bot…" autocomplete="off" />
+          <button type="submit">Send</button>
+        </form>
+      </div>
+    </section>
+
+    <section class="grid bottom">
+      <div class="panel">
+        <h2>Destinations</h2>
+        <p class="hint">Turn <strong>On</strong> only while OBS is live. Kick capped at 8000 kbps on the VPS.</p>
+        <div id="targets"><p class="empty">No destinations yet.</p></div>
+        <details>
+          <summary>Add destination</summary>
+          <div class="row-actions" id="presets">
+            <button type="button" class="ghost" data-preset="custom">Custom</button>
+            <button type="button" class="ghost" data-preset="youtube">YouTube</button>
+            <button type="button" class="ghost" data-preset="twitch">Twitch</button>
+            <button type="button" class="ghost" data-preset="kick">Kick</button>
+          </div>
+          <form id="targetForm" class="dest-form">
+            <label>Name
+              <input name="label" id="destLabel" placeholder="e.g. YouTube, Kick EU…" required autocomplete="off" />
+            </label>
+            <label>Feed
+              <select name="lane" id="destLane">
+                <option value="main" selected>Main (16:9)</option>
+                <option value="vertical">Vertical (9:16)</option>
+              </select>
+            </label>
+            <label>Server URL
+              <input name="rtmpUrl" id="rtmpUrl" placeholder="rtmp://… or rtmps://… (from platform)" required />
+            </label>
+            <label>Stream key
+              <input name="streamKey" id="destKey" placeholder="paste from platform" autocomplete="off" />
+            </label>
+            <button type="submit">Save</button>
+          </form>
+        </details>
+      </div>
+
+      <div class="panel">
+        <h2>Commands & welcome</h2>
+        <p class="hint">Chatters type <code>!name</code> — bot replies with your text.</p>
+        <div id="commands" class="cmd-list"><p class="empty">No commands yet.</p></div>
+        <form id="cmdForm" class="cmd-form">
+          <div class="cmd-fields">
+            <label>Command
+              <div class="cmd-name-wrap">
+                <span class="bang">!</span>
+                <input name="name" placeholder="discord" required autocomplete="off" />
+              </div>
+            </label>
+            <label class="grow">Reply
+              <input name="response" placeholder="Join our Discord: …" required />
+            </label>
+          </div>
+          <button type="submit">Save command</button>
+        </form>
+        <div class="welcome-box">
+          <label>Welcome message
+            <textarea id="welcome" rows="3" placeholder="Welcome to the stream, {user}!"></textarea>
+          </label>
+          <p class="hint">Use <code>{user}</code> for their display name.</p>
+          <button id="saveWelcome" type="button">Save welcome</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div id="deleteModal" class="modal" hidden>
+    <div class="modal-card" role="dialog" aria-labelledby="deleteTitle">
+      <div class="modal-top">
+        <h2 id="deleteTitle">Delete destination?</h2>
+        <button id="deleteClose" type="button" class="ghost" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <p>This cannot be undone. Type <strong id="deleteNameExact"></strong> below to confirm.</p>
+        <label>Confirm name
+          <input id="deleteConfirmInput" autocomplete="off" placeholder="type the name exactly" />
+        </label>
+        <div class="modal-actions">
+          <button id="deleteCancel" type="button" class="ghost">Cancel</button>
+          <button id="deleteConfirmBtn" type="button" class="danger" disabled>Delete</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="helpModal" class="modal" hidden>
+    <div class="modal-card" role="dialog" aria-labelledby="helpTitle">
+      <div class="modal-top">
+        <h2 id="helpTitle">How to set up</h2>
+        <button id="helpClose" type="button" class="ghost" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <h3>1. Video (OBS / Aitum)</h3>
+        <ol>
+          <li>Open <strong>Connection → Show details</strong> and copy Server + Main key.</li>
+          <li>OBS → Settings → Stream → Custom · auth <strong>OFF</strong>.</li>
+          <li>For 9:16, use the same Server with the <strong>Vertical</strong> key in Aitum.</li>
+          <li>Add Destinations (YouTube / Twitch / Kick), paste each platform’s stream key, turn <strong>On</strong> once. Leave them On — stop/start OBS only; the relay auto-reconnects (no Off/On each time).</li>
+          <li><strong>Output → Advanced:</strong> Rate Control <strong>CBR</strong>, Keyframe Interval <strong>2</strong> (Twitch/Kick buffer if this is 0/auto/4+; YouTube still OK).</li>
+        </ol>
+        <h3>2. Chat bot (optional)</h3>
+        <p>Chat is separate from video. In the game panel → your server → <strong>Startup</strong> variables, then <strong>restart</strong>:</p>
+        <ul>
+          <li><strong>Twitch:</strong> <code>TWITCH_CHANNEL</code> + <code>TWITCH_ACCESS_TOKEN</code></li>
+          <li><strong>YouTube chat:</strong> <code>YOUTUBE_LIVE_CHAT_ID</code> + API key or OAuth token</li>
+          <li><strong>Kick chat:</strong> <code>KICK_CHANNEL</code> (+ optional <code>KICK_ACCESS_TOKEN</code> to reply)</li>
+        </ul>
+        <p>After restart, Live chat shows which platforms are connected. Commands &amp; welcome work on connected chats.</p>
+        <h3>3. Kick / Twitch buffer tip</h3>
+        <p>Paste Kick’s Server URL + key from Kick Creator. Keep OBS ≤ 8000 kbps CBR and keyframe = 2. YouTube often looks fine with longer keyframes; Twitch/Kick do not.</p>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/app.js?v=20261027ui10"></script>
+</body>
+</html>
