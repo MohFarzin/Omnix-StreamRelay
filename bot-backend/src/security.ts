@@ -7,7 +7,6 @@ export function timingSafeStringEq(a: string, b: string): boolean {
   const ba = Buffer.from(a);
   const bb = Buffer.from(b);
   if (ba.length !== bb.length) {
-    // still do a compare to reduce timing oracle on length-only
     timingSafeEqual(ba, ba);
     return false;
   }
@@ -33,7 +32,6 @@ export async function registerSecurity(app: FastifyInstance): Promise<void> {
     reply.header("Referrer-Policy", "no-referrer");
     reply.header("Cross-Origin-Resource-Policy", "same-origin");
     reply.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
-    // Dashboard is HTTP on many panels — CSP kept loose for same-origin scripts
     reply.header(
       "Content-Security-Policy",
       "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws: wss:; base-uri 'self'; form-action 'self'"
@@ -42,7 +40,6 @@ export async function registerSecurity(app: FastifyInstance): Promise<void> {
   });
 
   app.addHook("preHandler", async (req, reply) => {
-    // Cap JSON body size already via Fastify bodyLimit; reject weird methods on API
     if (req.url.startsWith("/api/") && !["GET", "POST", "PUT", "DELETE", "HEAD", "OPTIONS"].includes(req.method)) {
       return reply.code(405).send({ error: "method not allowed" });
     }

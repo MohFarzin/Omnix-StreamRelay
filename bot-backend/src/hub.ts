@@ -76,5 +76,5 @@ export function startHub(): void {
         });
       }
     })();
-  }, 4000);
+  }, 1500);
 }

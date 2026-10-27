@@ -1,13 +1,34 @@
+# Local secrets / ops sheets (never publish)
 .env
+.env.*
+!.env.example
 ops/
+*.ppk
+*.pem
+*.key
+FIRST_LOGIN.txt
+**/omnix.secrets
+**/data/omnix.sqlite*
+
+# Dependencies & build output
 node_modules/
 bot-backend/node_modules/
 bot-backend/dist/
 bot-backend/data/
-*.sqlite
+data/
+logs/
+
+# Packs / noise
 *.log
-.DS_Store
-.cursor/rules/project-canon.mdc
-.dockerignore
-PLAN.md
 omnix-build.tgz
+*.tgz
+!**/package-*.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.cursor/
+*.swp
+*~
