@@ -158,6 +158,8 @@ docker compose up -d --build
 | Guide | Topic |
 |-------|--------|
 | [Vertical / Aitum](docs/VERTICAL-AITUM.md) | 9:16 feed, Aitum plugins, second OBS option |
+| [YouTube Live manager](docs/YOUTUBE-LIVE.md) | Google OAuth, create broadcast + key into relay |
+| [Mobile chat (PWA)](docs/MOBILE-CHAT.md) | Phone/tablet chat companion |
 
 ## Project layout
 

@@ -9,6 +9,7 @@ import type { ChatMessage, ChatProvider, Platform } from "./types.js";
 import { createTwitchProvider } from "./twitch.js";
 import { createYouTubeProvider } from "./youtube.js";
 import { createKickProvider } from "./kick.js";
+import { getLiveChatId, youtubeConnected } from "../youtube/tokens.js";
 
 type HubListener = (msg: ChatMessage) => void;
 
@@ -76,6 +77,11 @@ export async function stopChatEngine(): Promise<void> {
   providers.length = 0;
 }
 
+export async function restartChatEngine(): Promise<void> {
+  await stopChatEngine();
+  await startChatEngine();
+}
+
 export async function sendChat(text: string, platforms?: Platform[]): Promise<void> {
   const targets = platforms?.length
     ? providers.filter((p) => platforms.includes(p.platform))
@@ -100,10 +106,15 @@ export function chatDiagnostics(): {
   } else if (!connected.includes("twitch")) {
     missing.push({ platform: "twitch", need: "configured but failed to connect — check token" });
   }
-  if (!config.youtube.liveChatId || (!config.youtube.apiKey && !config.youtube.accessToken)) {
-    missing.push({ platform: "youtube", need: "YOUTUBE_LIVE_CHAT_ID + API key or OAuth token" });
+  const ytChat = getLiveChatId();
+  const ytAuth = youtubeConnected() || Boolean(config.youtube.apiKey || config.youtube.accessToken);
+  if (!ytChat || !ytAuth) {
+    missing.push({
+      platform: "youtube",
+      need: "Connect Google + Create live (or set YOUTUBE_LIVE_CHAT_ID + API/OAuth)",
+    });
   } else if (!connected.includes("youtube")) {
-    missing.push({ platform: "youtube", need: "configured but failed to connect" });
+    missing.push({ platform: "youtube", need: "configured but failed to connect — try restart chat" });
   }
   if (!config.kick.channel) {
     missing.push({ platform: "kick", need: "KICK_CHANNEL (+ optional KICK_ACCESS_TOKEN to reply)" });

@@ -1,30 +1,48 @@
 import { config } from "../config.js";
+import { getValidAccessToken } from "../youtube/oauth.js";
+import { getLiveChatId, youtubeConnected } from "../youtube/tokens.js";
 import type { ChatMessage, ChatProvider } from "./types.js";
 
 export function createYouTubeProvider(): ChatProvider | null {
-  const { liveChatId, apiKey, accessToken } = config.youtube;
-  if (!liveChatId || (!apiKey && !accessToken)) return null;
+  const liveChatId = getLiveChatId();
+  const apiKey = config.youtube.apiKey;
+  const canOAuth = youtubeConnected();
+  if (!liveChatId || (!apiKey && !canOAuth && !config.youtube.accessToken)) return null;
 
   let timer: NodeJS.Timeout | null = null;
   let pageToken = "";
   let stopped = false;
-  let sendFn: ((text: string) => Promise<void>) | null = null;
+
+  async function authHeaders(): Promise<Record<string, string>> {
+    const headers: Record<string, string> = {};
+    try {
+      if (canOAuth || config.youtube.refreshToken) {
+        headers.Authorization = `Bearer ${await getValidAccessToken()}`;
+      } else if (config.youtube.accessToken) {
+        headers.Authorization = `Bearer ${config.youtube.accessToken}`;
+      }
+    } catch {
+      if (config.youtube.accessToken) {
+        headers.Authorization = `Bearer ${config.youtube.accessToken}`;
+      }
+    }
+    return headers;
+  }
 
   async function poll(onMessage: (msg: ChatMessage) => void): Promise<void> {
+    const chatId = getLiveChatId();
+    if (!chatId) return;
     const params = new URLSearchParams({
-      liveChatId,
+      liveChatId: chatId,
       part: "snippet,authorDetails",
       maxResults: "50",
     });
     if (pageToken) params.set("pageToken", pageToken);
     if (apiKey) params.set("key", apiKey);
 
-    const headers: Record<string, string> = {};
-    if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
-
     const res = await fetch(
       `https://www.googleapis.com/youtube/v3/liveChat/messages?${params}`,
-      { headers }
+      { headers: await authHeaders() }
     );
     if (!res.ok) {
       const t = await res.text();
@@ -52,32 +70,14 @@ export function createYouTubeProvider(): ChatProvider | null {
       });
     }
     const wait = Math.max(body.pollingIntervalMillis ?? 5000, 2000);
-    if (!stopped) timer = setTimeout(() => void poll(onMessage).catch(() => {
-      if (!stopped) timer = setTimeout(() => void poll(onMessage), 10000);
-    }), wait);
+    if (!stopped) {
+      timer = setTimeout(() => {
+        void poll(onMessage).catch(() => {
+          if (!stopped) timer = setTimeout(() => void poll(onMessage), 10000);
+        });
+      }, wait);
+    }
   }
-
-  sendFn = async (text: string) => {
-    if (!accessToken) throw new Error("YouTube send needs YOUTUBE_ACCESS_TOKEN");
-    const res = await fetch(
-      "https://www.googleapis.com/youtube/v3/liveChat/messages?part=snippet",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          snippet: {
-            liveChatId,
-            type: "textMessageEvent",
-            textMessageDetails: { messageText: text },
-          },
-        }),
-      }
-    );
-    if (!res.ok) throw new Error(`YouTube send ${res.status}`);
-  };
 
   return {
     platform: "youtube",
@@ -91,8 +91,28 @@ export function createYouTubeProvider(): ChatProvider | null {
       timer = null;
     },
     async send(text) {
-      if (!sendFn) throw new Error("YouTube not ready");
-      await sendFn(text);
+      const chatId = getLiveChatId();
+      if (!chatId) throw new Error("No YouTube live chat id yet — create a live via YouTube manager");
+      const headers = await authHeaders();
+      if (!headers.Authorization) throw new Error("YouTube send needs OAuth access token");
+      const res = await fetch(
+        "https://www.googleapis.com/youtube/v3/liveChat/messages?part=snippet",
+        {
+          method: "POST",
+          headers: {
+            ...headers,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            snippet: {
+              liveChatId: chatId,
+              type: "textMessageEvent",
+              textMessageDetails: { messageText: text },
+            },
+          }),
+        }
+      );
+      if (!res.ok) throw new Error(`YouTube send ${res.status}`);
     },
   };
 }

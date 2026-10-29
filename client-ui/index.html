@@ -2,10 +2,16 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#0a0c10" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Omnix Chat" />
   <title>Omnix StreamRelay</title>
-  <link rel="stylesheet" href="/styles.css?v=20261027ui8" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/styles.css?v=20261029yt1" />
 </head>
 <body>
   <div id="login" class="panel login">
@@ -79,9 +85,18 @@
           <h2>Live chat</h2>
           <div id="chatStatus" class="hint">Checking…</div>
         </div>
-        <button id="toggleChatBtn" type="button" class="ghost" aria-expanded="false">Expand</button>
+        <div class="chat-head-actions">
+          <a class="ghost tiny linkish" href="/chat.html">Mobile view</a>
+          <button id="toggleChatBtn" type="button" class="ghost" aria-expanded="false">Expand</button>
+        </div>
       </div>
       <div id="chatBody" class="chat-body" hidden>
+        <div id="chatFilters" class="chat-filters" role="group" aria-label="Chat platforms">
+          <button type="button" class="chip on" data-chat-filter="all">All</button>
+          <button type="button" class="chip" data-chat-filter="twitch">Twitch</button>
+          <button type="button" class="chip" data-chat-filter="youtube">YouTube</button>
+          <button type="button" class="chip" data-chat-filter="kick">Kick</button>
+        </div>
         <div id="chat" class="chat"><p class="empty">Waiting for chat…</p></div>
         <form id="sendForm" class="send">
           <input name="text" placeholder="Reply as bot…" autocomplete="off" />
@@ -90,10 +105,64 @@
       </div>
     </section>
 
+    <section id="ytPanel" class="panel yt-panel">
+      <div class="setup-head">
+        <div>
+          <h2>YouTube Live manager</h2>
+          <p class="hint" id="ytStatus">Checking Google connection…</p>
+        </div>
+        <div class="row-actions">
+          <button id="ytConnectBtn" type="button">Connect Google</button>
+          <button id="ytDisconnectBtn" type="button" class="ghost" hidden>Disconnect</button>
+        </div>
+      </div>
+      <details id="ytPasteBox">
+        <summary>Paste refresh token (HTTP panels / no redirect)</summary>
+        <form id="ytTokenForm" class="dest-form">
+          <label>OAuth refresh token
+            <input name="refreshToken" id="ytRefreshToken" autocomplete="off" placeholder="from Google OAuth Playground or Cloud" />
+          </label>
+          <button type="submit">Save token</button>
+        </form>
+      </details>
+      <form id="ytLiveForm" class="dest-form yt-form">
+        <label>Title
+          <input name="title" id="ytTitle" required maxlength="100" placeholder="Tonight’s stream title" />
+        </label>
+        <label>Description
+          <textarea name="description" id="ytDesc" rows="3" placeholder="What you’re playing, links…"></textarea>
+        </label>
+        <div class="yt-row">
+          <label>Privacy
+            <select name="privacy" id="ytPrivacy">
+              <option value="unlisted" selected>Unlisted</option>
+              <option value="public">Public</option>
+              <option value="private">Private</option>
+            </select>
+          </label>
+          <label>Feed
+            <select name="lane" id="ytLane">
+              <option value="main" selected>Main (16:9)</option>
+              <option value="vertical">Vertical (9:16)</option>
+            </select>
+          </label>
+        </div>
+        <label>Thumbnail (optional)
+          <input type="file" id="ytThumb" accept="image/jpeg,image/png,image/webp" />
+        </label>
+        <label class="check">
+          <input type="checkbox" id="ytEnable" checked />
+          Enable destination and push key to relay
+        </label>
+        <button id="ytCreateBtn" type="submit">Create YouTube live</button>
+        <p class="hint" id="ytCreateHint">Creates a Control Room broadcast, binds RTMP, writes the stream key into Destinations.</p>
+      </form>
+    </section>
+
     <section class="grid bottom">
       <div class="panel">
         <h2>Destinations</h2>
-        <p class="hint">Turn <strong>On</strong> only while OBS is live. Kick capped at 8000 kbps on the VPS.</p>
+        <p class="hint">Leave <strong>On</strong> — stop/start OBS only. Kick ≤ 8000 kbps. Prefer YouTube manager above instead of pasting keys by hand.</p>
         <div id="targets"><p class="empty">No destinations yet.</p></div>
         <details>
           <summary>Add destination</summary>
@@ -195,12 +264,21 @@
           <li><strong>Kick chat:</strong> <code>KICK_CHANNEL</code> (+ optional <code>KICK_ACCESS_TOKEN</code> to reply)</li>
         </ul>
         <p>After restart, Live chat shows which platforms are connected. Commands &amp; welcome work on connected chats.</p>
-        <h3>3. Kick / Twitch buffer tip</h3>
-        <p>Paste Kick’s Server URL + key from Kick Creator. Keep OBS ≤ 8000 kbps CBR and keyframe = 2. YouTube often looks fine with longer keyframes; Twitch/Kick do not.</p>
+        <h3>3. YouTube Live manager</h3>
+        <p>Set <code>YOUTUBE_CLIENT_ID</code> + <code>YOUTUBE_CLIENT_SECRET</code> on the egg, add the redirect URI shown in the panel to Google Cloud, then <strong>Connect Google</strong> and <strong>Create YouTube live</strong> (title / description / thumbnail).</p>
+        <h3>4. Kick / Twitch buffer tip</h3>
+        <p>Paste Kick’s Server URL + key from Kick Creator. Keep OBS ≤ 8000 kbps CBR and keyframe = 2.</p>
+        <h3>5. Mobile chat</h3>
+        <p>Open <a href="/chat.html">/chat.html</a> on a phone or tablet, or install the PWA (Add to Home Screen).</p>
       </div>
     </div>
   </div>
 
-  <script type="module" src="/app.js?v=20261027ui10"></script>
+  <script type="module" src="/app.js?v=20261029yt1"></script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch(() => {});
+    }
+  </script>
 </body>
 </html>

@@ -27,6 +27,7 @@ import {
   assertTargetId,
   normalizeIngestUrl,
 } from "./validate.js";
+import { registerYoutubeRoutes } from "./youtube/routes.js";
 
 async function requireAuth(header: string | undefined): Promise<void> {
   if (!header?.startsWith("Bearer ")) throw Object.assign(new Error("Unauthorized"), { statusCode: 401 });
@@ -60,6 +61,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       path === "/api/v1/health" ||
       path === "/api/v1/auth/login" ||
       path === "/api/v1/auth/refresh" ||
+      path === "/api/v1/youtube/oauth/callback" ||
       !path.startsWith("/api/")
     ) {
       return;
@@ -71,6 +73,8 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(401).send({ error: "Unauthorized" });
     }
   });
+
+  await registerYoutubeRoutes(app);
 
   app.get("/api/v1/setup", async (req) => {
     const hostHeader = String(req.headers.host ?? "");

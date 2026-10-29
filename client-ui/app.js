@@ -3,6 +3,7 @@ const state = {
   refreshToken: localStorage.getItem("omnix_refresh") || "",
   ws: null,
   busy: false,
+  chatFilter: "all",
 };
 
 const $ = (id) => document.getElementById(id);
@@ -131,13 +132,29 @@ function connectWs() {
 
 function appendChat(msg) {
   const el = $("chat");
+  if (!el) return;
   const empty = el.querySelector(".empty");
   if (empty) empty.remove();
   const row = document.createElement("div");
   row.className = "row";
-  row.innerHTML = `<span class="plat">${msg.platform}</span> <strong>${escapeHtml(msg.user)}</strong>: ${escapeHtml(msg.text)}`;
+  row.dataset.platform = msg.platform || "";
+  row.innerHTML = `<span class="plat">${escapeHtml(msg.platform)}</span> <strong>${escapeHtml(msg.user)}</strong>: ${escapeHtml(msg.text)}`;
+  const filter = state.chatFilter || "all";
+  if (filter !== "all" && msg.platform !== filter) row.hidden = true;
   el.appendChild(row);
+  while (el.children.length > 400) el.firstChild.remove();
   el.scrollTop = el.scrollHeight;
+}
+
+function applyChatFilter(filter) {
+  state.chatFilter = filter || "all";
+  document.querySelectorAll("[data-chat-filter]").forEach((btn) => {
+    btn.classList.toggle("on", btn.getAttribute("data-chat-filter") === state.chatFilter);
+  });
+  document.querySelectorAll("#chat .row").forEach((row) => {
+    const plat = row.dataset.platform || "";
+    row.hidden = state.chatFilter !== "all" && plat !== state.chatFilter;
+  });
 }
 
 function escapeHtml(s) {
@@ -346,10 +363,37 @@ async function loadSetup() {
   }
 }
 
+async function loadYoutubeStatus() {
+  const statusEl = $("ytStatus");
+  const connectBtn = $("ytConnectBtn");
+  const disconnectBtn = $("ytDisconnectBtn");
+  if (!statusEl) return;
+  try {
+    const s = await api("/api/v1/youtube/status");
+    if (!s.oauthConfigured) {
+      statusEl.textContent =
+        "Set YOUTUBE_CLIENT_ID + YOUTUBE_CLIENT_SECRET on the egg, restart, then connect.";
+      if (connectBtn) connectBtn.disabled = true;
+      if (disconnectBtn) disconnectBtn.hidden = true;
+      return;
+    }
+    if (connectBtn) connectBtn.disabled = false;
+    if (s.connected) {
+      statusEl.textContent = `Google connected${s.liveChatId ? " · chat id ready" : ""}. Redirect URI: ${s.redirectUri || ""}`;
+      if (disconnectBtn) disconnectBtn.hidden = false;
+    } else {
+      statusEl.textContent = `Not connected. Add this redirect in Google Cloud: ${s.redirectUri || ""}`;
+      if (disconnectBtn) disconnectBtn.hidden = true;
+    }
+  } catch (e) {
+    statusEl.textContent = `YouTube status failed: ${e.message}`;
+  }
+}
+
 async function enter() {
   showApp(true);
   connectWs();
-  await Promise.all([loadSetup(), loadTargets(), loadCommands()]);
+  await Promise.all([loadSetup(), loadTargets(), loadCommands(), loadYoutubeStatus()]);
 }
 
 $("loginBtn").onclick = async () => {
@@ -621,6 +665,102 @@ $("sendForm").onsubmit = async (ev) => {
     toast(`Send failed: ${e.message}`);
   }
 };
+
+document.querySelectorAll("[data-chat-filter]").forEach((btn) => {
+  btn.onclick = () => applyChatFilter(btn.getAttribute("data-chat-filter") || "all");
+});
+
+window.addEventListener("message", (ev) => {
+  if (ev?.data?.type === "omnix-yt-oauth") {
+    void loadYoutubeStatus();
+    toast(ev.data.ok ? "Google connected" : "Google connect failed");
+  }
+});
+
+$("ytConnectBtn") &&
+  ($("ytConnectBtn").onclick = async () => {
+    try {
+      const s = await api("/api/v1/youtube/oauth/start");
+      window.open(s.url, "omnix-yt-oauth", "width=520,height=720");
+      toast("Finish Google sign-in in the popup");
+    } catch (e) {
+      toast(`Connect failed: ${e.message}`);
+    }
+  });
+
+$("ytDisconnectBtn") &&
+  ($("ytDisconnectBtn").onclick = async () => {
+    try {
+      await api("/api/v1/youtube/oauth/disconnect", { method: "POST", body: "{}" });
+      await loadYoutubeStatus();
+      toast("Google disconnected");
+    } catch (e) {
+      toast(e.message);
+    }
+  });
+
+$("ytTokenForm") &&
+  ($("ytTokenForm").onsubmit = async (ev) => {
+    ev.preventDefault();
+    try {
+      const token = $("ytRefreshToken")?.value?.trim() || "";
+      await api("/api/v1/youtube/oauth/token", {
+        method: "POST",
+        body: JSON.stringify({ refreshToken: token }),
+      });
+      $("ytRefreshToken").value = "";
+      await loadYoutubeStatus();
+      toast("Refresh token saved");
+    } catch (e) {
+      toast(`Token failed: ${e.message}`);
+    }
+  });
+
+$("ytLiveForm") &&
+  ($("ytLiveForm").onsubmit = async (ev) => {
+    ev.preventDefault();
+    const btn = $("ytCreateBtn");
+    if (btn) btn.disabled = true;
+    try {
+      let thumbnailBase64 = "";
+      let thumbnailMime = "";
+      const file = $("ytThumb")?.files?.[0];
+      if (file) {
+        if (file.size > 2_000_000) throw new Error("thumbnail must be under 2MB");
+        thumbnailMime = file.type || "image/jpeg";
+        thumbnailBase64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result || ""));
+          reader.onerror = () => reject(new Error("thumbnail read failed"));
+          reader.readAsDataURL(file);
+        });
+      }
+      const body = {
+        title: $("ytTitle")?.value || "",
+        description: $("ytDesc")?.value || "",
+        privacy: $("ytPrivacy")?.value || "unlisted",
+        lane: $("ytLane")?.value || "main",
+        enable: Boolean($("ytEnable")?.checked),
+        thumbnailBase64: thumbnailBase64 || undefined,
+        thumbnailMime: thumbnailMime || undefined,
+      };
+      const res = await api("/api/v1/youtube/live/create", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      toast(`YouTube live ready · ${res.targetId || "youtube"}`);
+      if (res.watchUrl) {
+        const hint = $("ytCreateHint");
+        if (hint) hint.innerHTML = `Watch: <a href="${escapeHtml(res.watchUrl)}" target="_blank" rel="noopener">${escapeHtml(res.watchUrl)}</a>`;
+      }
+      await loadTargets();
+      await loadYoutubeStatus();
+    } catch (e) {
+      toast(`Create failed: ${e.message}`);
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  });
 
 if (state.accessToken) {
   api("/api/v1/status")

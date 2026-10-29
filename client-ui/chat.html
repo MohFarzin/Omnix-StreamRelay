@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0c10" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Omnix Chat" />
+  <title>Omnix Chat</title>
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="/styles.css?v=20261029yt1" />
+</head>
+<body class="chat-only">
+  <div id="login" class="panel login">
+    <h1>Omnix Chat</h1>
+    <p class="sub">Same bootstrap token as the dashboard.</p>
+    <label>Bootstrap token
+      <input id="bootstrap" type="password" autocomplete="current-password" />
+    </label>
+    <button id="loginBtn" type="button">Connect</button>
+    <p id="loginErr" class="err" hidden></p>
+    <p class="hint"><a href="/">Full dashboard</a></p>
+  </div>
+
+  <div id="app" class="app chat-app" hidden>
+    <header class="chat-only-header">
+      <div>
+        <strong>Live chat</strong>
+        <span id="ingestBadge" class="badge">…</span>
+      </div>
+      <div class="header-actions">
+        <a class="ghost tiny linkish" href="/">Dashboard</a>
+        <button id="logoutBtn" type="button" class="ghost">Logout</button>
+      </div>
+    </header>
+    <div id="chatStatus" class="hint chat-status-bar">Checking…</div>
+    <div id="chatFilters" class="chat-filters" role="group" aria-label="Chat platforms">
+      <button type="button" class="chip on" data-chat-filter="all">All</button>
+      <button type="button" class="chip" data-chat-filter="twitch">Twitch</button>
+      <button type="button" class="chip" data-chat-filter="youtube">YouTube</button>
+      <button type="button" class="chip" data-chat-filter="kick">Kick</button>
+    </div>
+    <div id="chat" class="chat chat-mobile"><p class="empty">Waiting for chat…</p></div>
+    <form id="sendForm" class="send send-sticky">
+      <input name="text" placeholder="Reply as bot…" autocomplete="off" enterkeyhint="send" />
+      <button type="submit">Send</button>
+    </form>
+  </div>
+
+  <script type="module" src="/chat-app.js?v=20261029yt1"></script>
+  <script>
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch(() => {});
+    }
+  </script>
+</body>
+</html>

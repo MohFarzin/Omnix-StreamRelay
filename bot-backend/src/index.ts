@@ -19,7 +19,7 @@ async function main(): Promise<void> {
 
   const app = Fastify({
     logger: true,
-    bodyLimit: 64 * 1024,
+    bodyLimit: 3 * 1024 * 1024,
     trustProxy: true,
   });
   const { registerSecurity } = await import("./security.js");

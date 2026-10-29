@@ -189,6 +189,36 @@
       "field_type": "text"
     },
     {
+      "name": "YouTube OAuth Client ID",
+      "description": "Google Cloud OAuth client ID for YouTube Live manager (dashboard).",
+      "env_variable": "YOUTUBE_CLIENT_ID",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string|max:256",
+      "field_type": "text"
+    },
+    {
+      "name": "YouTube OAuth Client Secret",
+      "description": "Google Cloud OAuth client secret. Required with Client ID for Connect Google.",
+      "env_variable": "YOUTUBE_CLIENT_SECRET",
+      "default_value": "",
+      "user_viewable": false,
+      "user_editable": true,
+      "rules": "nullable|string",
+      "field_type": "text"
+    },
+    {
+      "name": "YouTube OAuth Redirect URI",
+      "description": "Optional full override. Default is http(s)://PUBLIC_HOST:PORT/api/v1/youtube/oauth/callback",
+      "env_variable": "YOUTUBE_REDIRECT_URI",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string|max:512",
+      "field_type": "text"
+    },
+    {
       "name": "OPTIONAL Kick Channel",
       "description": "Leave empty if unused.",
       "env_variable": "KICK_CHANNEL",
