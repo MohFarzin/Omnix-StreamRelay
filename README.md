@@ -107,7 +107,8 @@ Use [Aitum Vertical](https://obsproject.com/forum/resources/aitum-vertical.1715/
 
 In the dashboard (Streamlabs-style — **no** Google/Twitch Client ID fields for streamers):
 
-4. Turn **On**
+1. **Connect Google / Twitch / Kick** → pick your account → Allow  
+2. **YouTube Live manager** → title / description / thumbnail → **Create YouTube live** (writes the key into Destinations)  
 3. **Twitch Connect** usually also fills Destinations; turn **On** when OBS is live  
 4. **Kick:** Connect for chat, then paste **Server URL + stream key once** (Kick ingest is per-account)  
 5. Manual **Add destination** still works as a fallback  
