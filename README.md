@@ -115,7 +115,7 @@ In the dashboard (Streamlabs-style — **no** Google/Twitch Client ID fields for
 
 Leave destinations On. Stop/start OBS when you go live again — the relay reconnects for you.
 
-**Public users never create a Google Cloud project.** OmnixStudio (or your host) owns one OAuth app / broker; see [Connect platforms](docs/CONNECT-PLATFORMS.md).
+**Public users never create a Google Cloud project.** OmnixStudio (or your host) owns one OAuth app; see [Connect platforms](docs/CONNECT-PLATFORMS.md). Optional **Omnix Link** (Relay Link) lets you connect platforms on the web while your egg dials out — no public IP required: [Omnix-Link](https://github.com/MohFarzin/Omnix-Link) · https://relaylink.omnixstudio.xyz
 
 ---
 
@@ -166,8 +166,8 @@ docker compose up -d --build
 | [Privacy: Connect](docs/PRIVACY-CONNECT.md) | Tokens stay on your machine — what we do / don’t store |
 | [Connect platforms](docs/CONNECT-PLATFORMS.md) | YouTube / Twitch / Kick Connect + destinations |
 | [YouTube Live manager](docs/YOUTUBE-LIVE.md) | Create live + operator OAuth notes |
-| [OAuth broker](docs/OAUTH-BROKER.md) | Optional low-level ticket broker |
-| Omnix Link (`Broker/` — separate repo) | Optional website: account + pair StreamRelay + Connect → push tokens |
+| [Omnix Link / Relay Link](https://github.com/MohFarzin/Omnix-Link) | Optional site: tunnel token + outbound egg link + Connect → encrypted token handoff (`relaylink.omnixstudio.xyz`) |
+| [OAuth broker](docs/OAUTH-BROKER.md) | Optional low-level ticket helper (legacy; prefer Omnix Link) |
 | [Mobile chat (PWA)](docs/MOBILE-CHAT.md) | Phone/tablet chat companion |
 | [Desktop (Tauri)](docs/DESKTOP.md) | Lightweight Windows app + chat overlay |
 

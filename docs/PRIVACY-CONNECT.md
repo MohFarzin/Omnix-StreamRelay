@@ -18,7 +18,7 @@ OmnixStudio’s role is to ship the open-source app (and optionally a product OA
 |--------|-----------------|
 | **Device code** (preferred) | Your egg polls Google → tokens written locally |
 | **Browser redirect** to your egg | Google redirects to *your* host → tokens written locally |
-| Optional broker / “Omnix Link” | Only if *you* enable it later — **not** the default |
+| Optional Omnix Link (Relay Link) | Only if *you* paste a tunnel token — **not** the default |
 
 ## Open source
 
@@ -26,9 +26,9 @@ The full source is public: https://github.com/MohFarzin/Omnix-StreamRelay
 
 You can audit that Connect handlers write to local SQLite via `saveYoutubeTokens` / platform token helpers — there is no upload of refresh tokens to `omnixstudio.xyz` in the default path.
 
-## Omnix Link website (optional)
+## Omnix Link / Relay Link (optional)
 
-`Broker/` (separate GitHub repo / `streamrelay.omnixstudio.xyz`) lets you sign in, pair a StreamRelay, Connect platforms on the website, then **push tokens once to your egg**. Prefer local Connect on StreamRelay if you do not want that handoff.
+[Omnix-Link](https://github.com/MohFarzin/Omnix-Link) (`https://relaylink.omnixstudio.xyz`) lets you sign in, create a **tunnel token**, paste it into StreamRelay, and confirm the egg’s outbound connection (works without a public IP). Connect platforms on the website; your egg **pulls** an encrypted handoff. Prefer local Connect on StreamRelay if you do not want that path.
 
 ## Docs site
 

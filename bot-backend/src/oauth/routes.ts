@@ -30,17 +30,34 @@ import {
   rotateLinkPairingCode,
   verifyLinkPairingCode,
 } from "./link.js";
+import { getLinkAgentConfig, saveLinkAgentConfig } from "./link-agent.js";
 import { config } from "../config.js";
 
 export async function registerOAuthRoutes(app: FastifyInstance): Promise<void> {
-  /** Omnix Link pairing — show in dashboard; used by Broker site to push tokens here. */
-  app.get("/api/v1/oauth/link/status", async () => ({
-    pairingCode: getOrCreateLinkPairingCode(),
-    publicUrl: config.publicHost
-      ? `${process.env.OAUTH_RETURN_SCHEME || process.env.YOUTUBE_OAUTH_SCHEME || "http"}://${config.publicHost}:${config.port}`
-      : null,
-    hint: "Add this URL + pairing code on Omnix Link, then Connect platforms there. Tokens are saved on this server.",
-  }));
+  /** Omnix Link / Relay Link — egg dials out with tunnel token (no public URL needed). */
+  app.get("/api/v1/oauth/link/status", async () => {
+    const agent = getLinkAgentConfig();
+    return {
+      mode: "outbound",
+      linkUrl: agent.url,
+      tunnelToken: agent.tunnelToken ? `${agent.tunnelToken.slice(0, 6)}…` : "",
+      tunnelTokenSet: Boolean(agent.tunnelToken),
+      status: agent.status,
+      message: agent.message,
+      pairingCode: getOrCreateLinkPairingCode(),
+      publicUrl: config.publicHost
+        ? `${process.env.OAUTH_RETURN_SCHEME || process.env.YOUTUBE_OAUTH_SCHEME || "http"}://${config.publicHost}:${config.port}`
+        : null,
+      hint: "On https://relaylink.omnixstudio.xyz create a tunnel token, paste it here. Confirm the IP on Omnix Link when this egg connects.",
+    };
+  });
+
+  app.post<{ Body: { linkUrl?: string; tunnelToken?: string } }>("/api/v1/oauth/link/config", async (req) => {
+    return saveLinkAgentConfig({
+      url: req.body?.linkUrl,
+      tunnelToken: req.body?.tunnelToken,
+    });
+  });
 
   app.post("/api/v1/oauth/link/rotate", async () => ({
     pairingCode: rotateLinkPairingCode(),

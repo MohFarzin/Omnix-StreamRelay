@@ -1,8 +1,8 @@
 import { randomBytes } from "node:crypto";
 import { getSetting, setSetting } from "../db.js";
 import { restartChatEngine } from "../chat/engine.js";
-import { saveYoutubeTokens } from "../youtube/tokens.js";
-import { savePlatformTokens } from "./platform-tokens.js";
+import { clearYoutubeTokens, saveYoutubeTokens } from "../youtube/tokens.js";
+import { clearPlatformTokens, savePlatformTokens } from "./platform-tokens.js";
 import { pushTwitchDestination } from "./twitch.js";
 
 const K_PAIR = "omnix_link_pairing_code";
@@ -33,8 +33,10 @@ export async function ingestLinkPush(body: {
   refreshToken?: string | null;
   expiresIn?: number | null;
   extra?: Record<string, string>;
+  /** Outbound Omnix Link agent already authenticated via tunnel token. */
+  fromAgent?: boolean;
 }): Promise<{ ok: true; platform: string }> {
-  if (!verifyLinkPairingCode(String(body.pairingCode || ""))) {
+  if (!body.fromAgent && !verifyLinkPairingCode(String(body.pairingCode || ""))) {
     throw Object.assign(new Error("Invalid pairing code"), { statusCode: 401 });
   }
   const platform = String(body.platform || "").toLowerCase();
@@ -76,6 +78,20 @@ export async function ingestLinkPush(body: {
         /* optional */
       }
     }
+    void restartChatEngine().catch(() => undefined);
+  } else {
+    throw Object.assign(new Error("platform must be youtube|twitch|kick"), { statusCode: 400 });
+  }
+  return { ok: true, platform };
+}
+
+export async function revokeLinkPlatform(platformRaw: string): Promise<{ ok: true; platform: string }> {
+  const platform = String(platformRaw || "").toLowerCase();
+  if (platform === "youtube") {
+    clearYoutubeTokens();
+  } else if (platform === "twitch" || platform === "kick") {
+    clearPlatformTokens(platform);
+    setSetting(`${platform}_channel_override`, "");
     void restartChatEngine().catch(() => undefined);
   } else {
     throw Object.assign(new Error("platform must be youtube|twitch|kick"), { statusCode: 400 });

@@ -10,6 +10,7 @@ import { verifyAccess } from "./auth.js";
 import { addClient, startHub } from "./hub.js";
 import { startChatEngine, stopChatEngine } from "./chat/engine.js";
 import { startReconcileLoop, stopReconcileLoop } from "./relay/ffmpeg.js";
+import { startLinkAgent } from "./oauth/link-agent.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -82,6 +83,7 @@ async function main(): Promise<void> {
 
   startHub();
   startReconcileLoop();
+  startLinkAgent();
   await startChatEngine();
 
   await app.listen({ port: config.port, host: "0.0.0.0" });

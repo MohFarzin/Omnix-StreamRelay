@@ -393,7 +393,7 @@ async function loadYoutubeStatus() {
     const ytAvail = Boolean(yt.connectAvailable ?? yt.oauthConfigured);
     const ytText = yt.connected
       ? `Connected${yt.liveChatId ? " · chat ready" : ""}`
-      : "Not connected — click Connect Google";
+      : "Not connected — use Omnix Link → Connect YouTube";
     setConnectRow("ytStatus", "ytConnectBtn", "ytDisconnectBtn", ytAvail, yt.connected, ytText);
     if (yt.connected && $("ytStatus")) $("ytStatus").textContent = ytText;
 
@@ -404,7 +404,7 @@ async function loadYoutubeStatus() {
         "twitchDisconnectBtn",
         Boolean(oauth.twitch?.connectAvailable),
         Boolean(oauth.twitch?.connected),
-        oauth.twitch?.hint || "Not connected — click Connect Twitch"
+        oauth.twitch?.hint || "Not connected — use Omnix Link → Connect Twitch"
       );
       if (oauth.twitch?.connected && $("twitchStatus")) {
         const ch = oauth.twitch?.meta?.channel;
@@ -416,7 +416,7 @@ async function loadYoutubeStatus() {
         "kickDisconnectBtn",
         Boolean(oauth.kick?.connectAvailable),
         Boolean(oauth.kick?.connected),
-        oauth.kick?.hint || "Not connected — click Connect Kick"
+        oauth.kick?.hint || "Not connected — use Omnix Link → Connect Kick"
       );
       if (oauth.kick?.connected && $("kickStatus")) {
         const ch = oauth.kick?.meta?.channel;
@@ -503,15 +503,15 @@ async function startPlatformConnect(platform) {
 }
 
 async function loadLinkStatus() {
-  const urlEl = $("linkRelayUrl");
-  const codeEl = $("linkPairCode");
-  if (!urlEl || !codeEl) return;
+  const statusEl = $("linkStatusLine");
+  if (!statusEl) return;
   try {
     const s = await api("/api/v1/oauth/link/status");
-    urlEl.textContent = s.publicUrl || location.origin;
-    codeEl.textContent = s.pairingCode || "…";
+    statusEl.textContent = s.tunnelTokenSet
+      ? `Status: ${s.status || "…"} — ${s.message || ""}`
+      : "Status: not connected — paste Connect Relay token from Omnix Link";
   } catch (e) {
-    codeEl.textContent = `unavailable: ${e.message}`;
+    statusEl.textContent = `Status: unavailable (${e.message})`;
   }
 }
 
@@ -856,12 +856,22 @@ $("deviceFallback") &&
     }
   });
 
-$("linkRotateBtn") &&
-  ($("linkRotateBtn").onclick = async () => {
+$("linkSaveBtn") &&
+  ($("linkSaveBtn").onclick = async () => {
     try {
-      const s = await api("/api/v1/oauth/link/rotate", { method: "POST", body: "{}" });
-      if ($("linkPairCode")) $("linkPairCode").textContent = s.pairingCode || "…";
-      toast("New pairing code — update Omnix Link if already linked");
+      const body = {
+        tunnelToken: $("linkTunnelToken")?.value || "",
+      };
+      const s = await api("/api/v1/oauth/link/config", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      if ($("linkTunnelToken")) $("linkTunnelToken").value = "";
+      if ($("linkStatusLine")) {
+        $("linkStatusLine").textContent = `Status: ${s.status || "…"} — ${s.message || "saved"}`;
+      }
+      toast("Connecting — confirm this relay on Omnix Link");
+      await loadLinkStatus();
     } catch (e) {
       toast(e.message);
     }
