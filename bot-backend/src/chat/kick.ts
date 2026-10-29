@@ -1,4 +1,6 @@
 import { config } from "../config.js";
+import { getSetting } from "../db.js";
+import { getPlatformAccess } from "../oauth/platform-tokens.js";
 import type { ChatMessage, ChatProvider } from "./types.js";
 
 /**
@@ -6,7 +8,10 @@ import type { ChatMessage, ChatProvider } from "./types.js";
  * shortcut: unofficial WS client, upgrade to official webhooks when DOMAIN + Kick app ready
  */
 export function createKickProvider(): ChatProvider | null {
-  const { channel, accessToken, clientId, clientSecret } = config.kick;
+  const channel = getSetting("kick_channel_override") || config.kick.channel;
+  const stored = getPlatformAccess("kick");
+  const accessToken = stored?.token || config.kick.accessToken;
+  const { clientId, clientSecret } = config.kick;
   if (!channel) return null;
 
   let stopHandle: (() => Promise<void>) | null = null;

@@ -5,11 +5,13 @@ import { reconcile, resetTargetBackoff } from "../relay/ffmpeg.js";
 import { restartChatEngine } from "../chat/engine.js";
 import { assertLane, assertShortText, assertStreamKey, assertTargetId } from "../validate.js";
 import { buildAuthUrl, exchangeCode, redirectUri, savePastedRefreshToken } from "./oauth.js";
+import { pollDeviceFlow, startDeviceFlow } from "./device.js";
 import { createAndBindLive } from "./live.js";
 import {
   clearYoutubeTokens,
   youtubeConnected,
   youtubeOAuthConfigured,
+  youtubeConnectMode,
   getLiveChatId,
 } from "./tokens.js";
 
@@ -18,20 +20,50 @@ function destIdForLane(lane: "main" | "vertical"): string {
 }
 
 export async function registerYoutubeRoutes(app: FastifyInstance): Promise<void> {
-  app.get("/api/v1/youtube/status", async () => ({
-    oauthConfigured: youtubeOAuthConfigured(),
-    connected: youtubeConnected(),
-    redirectUri: youtubeOAuthConfigured() ? redirectUri() : null,
-    liveChatId: getLiveChatId() || null,
-    hint: youtubeOAuthConfigured()
-      ? "Add this exact redirect URI in Google Cloud → Credentials → OAuth client."
-      : "Set YOUTUBE_CLIENT_ID and YOUTUBE_CLIENT_SECRET (egg Startup or .env), then restart.",
-  }));
+  app.get("/api/v1/youtube/status", async () => {
+    const mode = youtubeConnectMode();
+    const ready = youtubeOAuthConfigured();
+    return {
+      oauthConfigured: ready,
+      connectAvailable: ready,
+      connected: youtubeConnected(),
+      mode,
+      redirectUri: mode === "direct" ? redirectUri() : null,
+      liveChatId: getLiveChatId() || null,
+      privacy:
+        "Your Google/YouTube tokens are stored encrypted only on this Omnix server. OmnixStudio does not receive or keep them.",
+      hint: ready
+        ? "Connect Google — tokens stay on this machine (device code or local redirect)."
+        : "YouTube Connect is unavailable on this build.",
+    };
+  });
 
+  /** Preferred: device code — Google talks to this egg only. */
+  app.post("/api/v1/youtube/oauth/device/start", async (_req, reply) => {
+    try {
+      return await startDeviceFlow();
+    } catch (e) {
+      const err = e as Error & { statusCode?: number };
+      return reply.code(err.statusCode ?? 400).send({ error: err.message });
+    }
+  });
+
+  app.post<{ Body: { sessionId?: string } }>("/api/v1/youtube/oauth/device/poll", async (req, reply) => {
+    try {
+      const sessionId = String(req.body?.sessionId ?? "");
+      if (!sessionId) return reply.code(400).send({ error: "sessionId required" });
+      return await pollDeviceFlow(sessionId);
+    } catch (e) {
+      const err = e as Error & { statusCode?: number };
+      return reply.code(err.statusCode ?? 400).send({ error: err.message });
+    }
+  });
+
+  /** Fallback: browser redirect back to this egg (still local tokens). */
   app.get("/api/v1/youtube/oauth/start", async (_req, reply) => {
     try {
-      const { url } = buildAuthUrl();
-      return { url, redirectUri: redirectUri() };
+      const { url, mode } = buildAuthUrl();
+      return { url, mode };
     } catch (e) {
       const err = e as Error & { statusCode?: number };
       return reply.code(err.statusCode ?? 400).send({ error: err.message });

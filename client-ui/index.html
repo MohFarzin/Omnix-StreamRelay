@@ -11,7 +11,7 @@
   <title>Omnix StreamRelay</title>
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="/styles.css?v=20261029yt1" />
+  <link rel="stylesheet" href="/styles.css?v=20261029link1" />
 </head>
 <body>
   <div id="login" class="panel login">
@@ -105,26 +105,70 @@
       </div>
     </section>
 
+    <section id="linkPanel" class="panel yt-panel">
+      <div class="setup-head">
+        <div>
+          <h2>Omnix Link (optional)</h2>
+          <p class="hint">Pair this StreamRelay with <code>streamrelay.omnixstudio.xyz</code> (Omnix Link). Connect platforms on the website; tokens are pushed <strong>here</strong>.</p>
+        </div>
+        <button id="linkRotateBtn" type="button" class="ghost">New code</button>
+      </div>
+      <div class="copy-row">
+        <span>Relay URL</span>
+        <code id="linkRelayUrl">…</code>
+        <button type="button" class="ghost" data-copy="linkRelayUrl">Copy</button>
+      </div>
+      <div class="copy-row">
+        <span>Pairing code</span>
+        <code id="linkPairCode">…</code>
+        <button type="button" class="ghost" data-copy="linkPairCode">Copy</button>
+      </div>
+    </section>
+
+    <section id="connectPanel" class="panel yt-panel">
+      <h2>Connect accounts (on this server)</h2>
+      <p class="hint">Or connect directly here — tokens stay <strong>encrypted on this server only</strong>. Open source: you can verify the code.</p>
+      <div class="connect-grid">
+        <div class="connect-card">
+          <div>
+            <strong>YouTube</strong>
+            <div class="hint" id="ytStatus">Checking…</div>
+          </div>
+          <div class="row-actions">
+            <button id="ytConnectBtn" type="button">Connect Google</button>
+            <button id="ytDisconnectBtn" type="button" class="ghost" hidden>Disconnect</button>
+          </div>
+        </div>
+        <div class="connect-card">
+          <div>
+            <strong>Twitch</strong>
+            <div class="hint" id="twitchStatus">Checking…</div>
+          </div>
+          <div class="row-actions">
+            <button id="twitchConnectBtn" type="button">Connect Twitch</button>
+            <button id="twitchDisconnectBtn" type="button" class="ghost" hidden>Disconnect</button>
+          </div>
+        </div>
+        <div class="connect-card">
+          <div>
+            <strong>Kick</strong>
+            <div class="hint" id="kickStatus">Checking…</div>
+          </div>
+          <div class="row-actions">
+            <button id="kickConnectBtn" type="button">Connect Kick</button>
+            <button id="kickDisconnectBtn" type="button" class="ghost" hidden>Disconnect</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section id="ytPanel" class="panel yt-panel">
       <div class="setup-head">
         <div>
           <h2>YouTube Live manager</h2>
-          <p class="hint" id="ytStatus">Checking Google connection…</p>
-        </div>
-        <div class="row-actions">
-          <button id="ytConnectBtn" type="button">Connect Google</button>
-          <button id="ytDisconnectBtn" type="button" class="ghost" hidden>Disconnect</button>
+          <p class="hint">Create a Control Room live and push the stream key into Destinations.</p>
         </div>
       </div>
-      <details id="ytPasteBox">
-        <summary>Paste refresh token (HTTP panels / no redirect)</summary>
-        <form id="ytTokenForm" class="dest-form">
-          <label>OAuth refresh token
-            <input name="refreshToken" id="ytRefreshToken" autocomplete="off" placeholder="from Google OAuth Playground or Cloud" />
-          </label>
-          <button type="submit">Save token</button>
-        </form>
-      </details>
       <form id="ytLiveForm" class="dest-form yt-form">
         <label>Title
           <input name="title" id="ytTitle" required maxlength="100" placeholder="Tonight’s stream title" />
@@ -222,6 +266,27 @@
     </section>
   </div>
 
+  <div id="deviceModal" class="modal" hidden>
+    <div class="modal-card" role="dialog" aria-labelledby="deviceTitle">
+      <div class="modal-top">
+        <h2 id="deviceTitle">Connect Google</h2>
+        <button id="deviceClose" type="button" class="ghost" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <p class="hint">Tokens are saved only on <strong>this</strong> Omnix machine — not on OmnixStudio’s website.</p>
+        <p>1. Open Google’s device page:</p>
+        <p><a id="deviceLink" href="https://www.google.com/device" target="_blank" rel="noopener">www.google.com/device</a></p>
+        <p>2. Enter this code:</p>
+        <p class="device-code" id="deviceCode">······</p>
+        <p class="hint" id="deviceWait">Waiting for you to Allow…</p>
+        <div class="modal-actions">
+          <button id="deviceFallback" type="button" class="ghost">Use browser redirect instead</button>
+          <button id="deviceCancel" type="button" class="ghost">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="deleteModal" class="modal" hidden>
     <div class="modal-card" role="dialog" aria-labelledby="deleteTitle">
       <div class="modal-top">
@@ -264,8 +329,8 @@
           <li><strong>Kick chat:</strong> <code>KICK_CHANNEL</code> (+ optional <code>KICK_ACCESS_TOKEN</code> to reply)</li>
         </ul>
         <p>After restart, Live chat shows which platforms are connected. Commands &amp; welcome work on connected chats.</p>
-        <h3>3. YouTube Live manager</h3>
-        <p>Set <code>YOUTUBE_CLIENT_ID</code> + <code>YOUTUBE_CLIENT_SECRET</code> on the egg, add the redirect URI shown in the panel to Google Cloud, then <strong>Connect Google</strong> and <strong>Create YouTube live</strong> (title / description / thumbnail).</p>
+        <h3>3. Connect accounts</h3>
+        <p>Use <strong>Connect Google / Twitch / Kick</strong> — pick your account and Allow (no API keys in the egg). YouTube <strong>Create live</strong> fills Destinations; Twitch Connect usually fills the key too; Kick needs Server URL + key pasted once.</p>
         <h3>4. Kick / Twitch buffer tip</h3>
         <p>Paste Kick’s Server URL + key from Kick Creator. Keep OBS ≤ 8000 kbps CBR and keyframe = 2.</p>
         <h3>5. Mobile chat</h3>
@@ -274,7 +339,7 @@
     </div>
   </div>
 
-  <script type="module" src="/app.js?v=20261029yt1"></script>
+  <script type="module" src="/app.js?v=20261029link1"></script>
   <script>
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/sw.js").catch(() => {});

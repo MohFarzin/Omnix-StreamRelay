@@ -363,37 +363,162 @@ async function loadSetup() {
   }
 }
 
-async function loadYoutubeStatus() {
-  const statusEl = $("ytStatus");
-  const connectBtn = $("ytConnectBtn");
-  const disconnectBtn = $("ytDisconnectBtn");
+function setConnectRow(statusId, connectId, disconnectId, available, connected, idleText) {
+  const statusEl = $(statusId);
+  const connectBtn = $(connectId);
+  const disconnectBtn = $(disconnectId);
   if (!statusEl) return;
+  if (!available) {
+    statusEl.textContent = "Connect unavailable on this build";
+    if (connectBtn) connectBtn.disabled = true;
+    if (disconnectBtn) disconnectBtn.hidden = true;
+    return;
+  }
+  if (connectBtn) connectBtn.disabled = false;
+  if (connected) {
+    statusEl.textContent = "Connected";
+    if (disconnectBtn) disconnectBtn.hidden = false;
+  } else {
+    statusEl.textContent = idleText || "Not connected — click Connect";
+    if (disconnectBtn) disconnectBtn.hidden = true;
+  }
+}
+
+async function loadYoutubeStatus() {
   try {
-    const s = await api("/api/v1/youtube/status");
-    if (!s.oauthConfigured) {
-      statusEl.textContent =
-        "Set YOUTUBE_CLIENT_ID + YOUTUBE_CLIENT_SECRET on the egg, restart, then connect.";
-      if (connectBtn) connectBtn.disabled = true;
-      if (disconnectBtn) disconnectBtn.hidden = true;
-      return;
-    }
-    if (connectBtn) connectBtn.disabled = false;
-    if (s.connected) {
-      statusEl.textContent = `Google connected${s.liveChatId ? " · chat id ready" : ""}. Redirect URI: ${s.redirectUri || ""}`;
-      if (disconnectBtn) disconnectBtn.hidden = false;
-    } else {
-      statusEl.textContent = `Not connected. Add this redirect in Google Cloud: ${s.redirectUri || ""}`;
-      if (disconnectBtn) disconnectBtn.hidden = true;
+    const [yt, oauth] = await Promise.all([
+      api("/api/v1/youtube/status"),
+      api("/api/v1/oauth/status").catch(() => null),
+    ]);
+    const ytAvail = Boolean(yt.connectAvailable ?? yt.oauthConfigured);
+    const ytText = yt.connected
+      ? `Connected${yt.liveChatId ? " · chat ready" : ""}`
+      : "Not connected — click Connect Google";
+    setConnectRow("ytStatus", "ytConnectBtn", "ytDisconnectBtn", ytAvail, yt.connected, ytText);
+    if (yt.connected && $("ytStatus")) $("ytStatus").textContent = ytText;
+
+    if (oauth) {
+      setConnectRow(
+        "twitchStatus",
+        "twitchConnectBtn",
+        "twitchDisconnectBtn",
+        Boolean(oauth.twitch?.connectAvailable),
+        Boolean(oauth.twitch?.connected),
+        oauth.twitch?.hint || "Not connected — click Connect Twitch"
+      );
+      if (oauth.twitch?.connected && $("twitchStatus")) {
+        const ch = oauth.twitch?.meta?.channel;
+        $("twitchStatus").textContent = ch ? `Connected · ${ch}` : "Connected";
+      }
+      setConnectRow(
+        "kickStatus",
+        "kickConnectBtn",
+        "kickDisconnectBtn",
+        Boolean(oauth.kick?.connectAvailable),
+        Boolean(oauth.kick?.connected),
+        oauth.kick?.hint || "Not connected — click Connect Kick"
+      );
+      if (oauth.kick?.connected && $("kickStatus")) {
+        const ch = oauth.kick?.meta?.channel;
+        $("kickStatus").textContent = ch ? `Connected · ${ch} · paste key in Destinations` : "Connected · paste Kick URL+key once";
+      }
     }
   } catch (e) {
-    statusEl.textContent = `YouTube status failed: ${e.message}`;
+    if ($("ytStatus")) $("ytStatus").textContent = `Status failed: ${e.message}`;
+  }
+}
+
+let devicePollTimer = null;
+
+function closeDeviceModal() {
+  const modal = $("deviceModal");
+  if (modal) modal.hidden = true;
+  if (devicePollTimer) {
+    clearTimeout(devicePollTimer);
+    devicePollTimer = null;
+  }
+}
+
+async function startYoutubeDeviceConnect() {
+  const started = await api("/api/v1/youtube/oauth/device/start", {
+    method: "POST",
+    body: "{}",
+  });
+  const modal = $("deviceModal");
+  if (!modal) throw new Error("device UI missing");
+  $("deviceCode").textContent = started.userCode || "······";
+  const link = $("deviceLink");
+  const href = started.verificationUrlComplete || started.verificationUrl || "https://www.google.com/device";
+  link.href = href;
+  link.textContent = href.replace(/^https?:\/\//, "");
+  $("deviceWait").textContent = "Waiting for you to Allow…";
+  modal.hidden = false;
+
+  const intervalMs = Math.max(3000, (started.intervalSec || 5) * 1000);
+  const sessionId = started.sessionId;
+
+  const tick = async () => {
+    try {
+      const r = await api("/api/v1/youtube/oauth/device/poll", {
+        method: "POST",
+        body: JSON.stringify({ sessionId }),
+      });
+      if (r.status === "connected") {
+        closeDeviceModal();
+        toast("Google connected — tokens saved on this server only");
+        await loadYoutubeStatus();
+        return;
+      }
+      if (r.status === "slow_down") {
+        $("deviceWait").textContent = r.message || "Waiting…";
+        devicePollTimer = setTimeout(tick, intervalMs + 2000);
+        return;
+      }
+      devicePollTimer = setTimeout(tick, intervalMs);
+    } catch (e) {
+      $("deviceWait").textContent = e.message || "Connect failed";
+      toast(`Connect failed: ${e.message}`);
+    }
+  };
+  devicePollTimer = setTimeout(tick, intervalMs);
+}
+
+async function startPlatformConnect(platform) {
+  if (platform === "youtube") {
+    try {
+      await startYoutubeDeviceConnect();
+      return;
+    } catch (e) {
+      // Web OAuth clients often lack device flow — fall back to local redirect popup
+      toast(`Device Connect unavailable — trying browser… (${e.message})`);
+    }
+  }
+  const path =
+    platform === "youtube"
+      ? "/api/v1/youtube/oauth/start"
+      : `/api/v1/oauth/${platform}/start`;
+  const s = await api(path);
+  window.open(s.url, "omnix-oauth", "width=520,height=720");
+  toast("Finish sign-in in the popup — tokens stay on this server");
+}
+
+async function loadLinkStatus() {
+  const urlEl = $("linkRelayUrl");
+  const codeEl = $("linkPairCode");
+  if (!urlEl || !codeEl) return;
+  try {
+    const s = await api("/api/v1/oauth/link/status");
+    urlEl.textContent = s.publicUrl || location.origin;
+    codeEl.textContent = s.pairingCode || "…";
+  } catch (e) {
+    codeEl.textContent = `unavailable: ${e.message}`;
   }
 }
 
 async function enter() {
   showApp(true);
   connectWs();
-  await Promise.all([loadSetup(), loadTargets(), loadCommands(), loadYoutubeStatus()]);
+  await Promise.all([loadSetup(), loadTargets(), loadCommands(), loadYoutubeStatus(), loadLinkStatus()]);
 }
 
 $("loginBtn").onclick = async () => {
@@ -671,48 +796,74 @@ document.querySelectorAll("[data-chat-filter]").forEach((btn) => {
 });
 
 window.addEventListener("message", (ev) => {
-  if (ev?.data?.type === "omnix-yt-oauth") {
+  if (ev?.data?.type === "omnix-yt-oauth" || ev?.data?.type === "omnix-oauth") {
     void loadYoutubeStatus();
-    toast(ev.data.ok ? "Google connected" : "Google connect failed");
+    toast(ev.data.ok ? "Account connected" : "Connect failed");
   }
 });
 
-$("ytConnectBtn") &&
-  ($("ytConnectBtn").onclick = async () => {
+async function wireConnect(btnId, platform) {
+  const btn = $(btnId);
+  if (!btn) return;
+  btn.onclick = async () => {
     try {
-      const s = await api("/api/v1/youtube/oauth/start");
-      window.open(s.url, "omnix-yt-oauth", "width=520,height=720");
-      toast("Finish Google sign-in in the popup");
+      await startPlatformConnect(platform);
     } catch (e) {
       toast(`Connect failed: ${e.message}`);
     }
-  });
+  };
+}
 
-$("ytDisconnectBtn") &&
-  ($("ytDisconnectBtn").onclick = async () => {
+async function wireDisconnect(btnId, platform) {
+  const btn = $(btnId);
+  if (!btn) return;
+  btn.onclick = async () => {
     try {
-      await api("/api/v1/youtube/oauth/disconnect", { method: "POST", body: "{}" });
+      const path =
+        platform === "youtube"
+          ? "/api/v1/youtube/oauth/disconnect"
+          : `/api/v1/oauth/${platform}/disconnect`;
+      await api(path, { method: "POST", body: "{}" });
       await loadYoutubeStatus();
-      toast("Google disconnected");
+      toast("Disconnected");
+    } catch (e) {
+      toast(e.message);
+    }
+  };
+}
+
+void wireConnect("ytConnectBtn", "youtube");
+void wireConnect("twitchConnectBtn", "twitch");
+void wireConnect("kickConnectBtn", "kick");
+void wireDisconnect("ytDisconnectBtn", "youtube");
+void wireDisconnect("twitchDisconnectBtn", "twitch");
+void wireDisconnect("kickDisconnectBtn", "kick");
+
+$("deviceClose") && ($("deviceClose").onclick = () => closeDeviceModal());
+$("deviceCancel") && ($("deviceCancel").onclick = () => closeDeviceModal());
+$("deviceModal")?.addEventListener("click", (ev) => {
+  if (ev.target === $("deviceModal")) closeDeviceModal();
+});
+$("deviceFallback") &&
+  ($("deviceFallback").onclick = async () => {
+    closeDeviceModal();
+    try {
+      const s = await api("/api/v1/youtube/oauth/start");
+      window.open(s.url, "omnix-oauth", "width=520,height=720");
+      toast("Browser Connect — still saved only on this server");
     } catch (e) {
       toast(e.message);
     }
   });
 
-$("ytTokenForm") &&
-  ($("ytTokenForm").onsubmit = async (ev) => {
-    ev.preventDefault();
+$("linkRotateBtn") &&
+  ($("linkRotateBtn").onclick = async () => {
     try {
-      const token = $("ytRefreshToken")?.value?.trim() || "";
-      await api("/api/v1/youtube/oauth/token", {
-        method: "POST",
-        body: JSON.stringify({ refreshToken: token }),
-      });
-      $("ytRefreshToken").value = "";
-      await loadYoutubeStatus();
-      toast("Refresh token saved");
+      const s = await api("/api/v1/oauth/link/rotate", { method: "POST", body: "{}" });
+      if ($("linkPairCode")) $("linkPairCode").textContent = s.pairingCode || "…";
+      toast("New pairing code — update Omnix Link if already linked");
     } catch (e) {
-      toast(`Token failed: ${e.message}`);
+      toast(e.message);
     }
   });
 

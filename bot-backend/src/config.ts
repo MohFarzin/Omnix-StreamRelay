@@ -46,6 +46,12 @@ export const config = {
     accessToken: process.env.KICK_ACCESS_TOKEN ?? "",
     channel: process.env.KICK_CHANNEL ?? "",
   },
+  /**
+   * OmnixStudio OAuth broker (Streamlabs-style Connect for public / multi-host).
+   * When set, Connect YouTube/Twitch/Kick goes through the broker — no egg Client ID fields.
+   */
+  oauthBrokerUrl: (process.env.OAUTH_BROKER_URL ?? "").replace(/\/$/, ""),
+  oauthBrokerSecret: process.env.OAUTH_BROKER_SECRET ?? "",
 };
 
 export function assertConfig(): void {

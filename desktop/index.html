@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Omnix StreamRelay</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div id="boot" class="boot">
+    <h1>Omnix StreamRelay</h1>
+    <p class="sub">Lightweight desktop shell — same panel as the web app, plus chat overlay.</p>
+    <label>Relay URL
+      <input id="relayUrl" placeholder="http://127.0.0.1:8080" />
+    </label>
+    <label>Bootstrap token
+      <input id="token" type="password" autocomplete="current-password" />
+    </label>
+    <div class="row">
+      <button id="openDash" type="button">Open dashboard</button>
+      <button id="openOverlay" type="button" class="ghost">Chat overlay</button>
+    </div>
+    <p id="err" class="err" hidden></p>
+  </div>
+  <script type="module" src="/main.js"></script>
+</body>
+</html>

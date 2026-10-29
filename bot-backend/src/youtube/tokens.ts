@@ -15,7 +15,15 @@ export type YoutubeTokenBundle = {
 };
 
 export function youtubeOAuthConfigured(): boolean {
+  if (config.oauthBrokerUrl && config.oauthBrokerSecret) return true;
   return Boolean(config.youtube.clientId && config.youtube.clientSecret);
+}
+
+/** Prefer local/direct so account tokens stay on this egg — broker is opt-in only. */
+export function youtubeConnectMode(): "broker" | "direct" | "none" {
+  if (config.youtube.clientId && config.youtube.clientSecret) return "direct";
+  if (config.oauthBrokerUrl && config.oauthBrokerSecret) return "broker";
+  return "none";
 }
 
 export function getStoredRefreshToken(): string | null {

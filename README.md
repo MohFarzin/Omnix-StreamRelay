@@ -5,15 +5,19 @@
 
 Self-hosted multistream relay for creators. Point OBS (or Aitum) at **your** server once; the server fans the same feed out to Twitch, YouTube, Kick, or any custom RTMP destination.
 
-- Browser dashboard (no desktop app)
+- Browser dashboard (no desktop app required)
 - Passthrough by default (`ffmpeg -c copy`) — light on CPU and RAM
 - Dual ingest: 16:9 main + 9:16 vertical ([Aitum setup guide](docs/VERTICAL-AITUM.md))
+- **Connect Google / Twitch / Kick** — account tokens encrypted **only on your server** ([privacy](docs/PRIVACY-CONNECT.md)); you don’t paste stream keys every session for YouTube
 - Optional multi-platform chat bot
 - SQLite only (no external database)
 - First-class [Pterodactyl](https://pterodactyl.io/) / Jexactyl egg
+- MIT open source — audit the Connect code yourself
 
 **Repository:** https://github.com/MohFarzin/Omnix-StreamRelay  
 **Contact:** admin@omnixstudio.xyz
+
+> **Trust:** OmnixStudio does **not** keep your YouTube/Twitch/Kick login tokens on our website. Connect finishes on **your** Omnix instance. Optional cloud “Link” is not the default.
 
 ---
 
@@ -99,18 +103,18 @@ Use [Aitum Vertical](https://obsproject.com/forum/resources/aitum-vertical.1715/
 
 **Recommended encode settings for Twitch / Kick:** CBR, keyframe interval **2**, Kick bitrate ≤ 8000 kbps.
 
-### 5. Add destinations
+### 5. Connect accounts + destinations
 
-In the dashboard:
+In the dashboard (Streamlabs-style — **no** Google/Twitch Client ID fields for streamers):
 
-1. Add Twitch / YouTube / Kick / Custom
-2. Choose feed **main** or **vertical**
-3. Paste each platform’s server URL + stream key
 4. Turn **On**
+3. **Twitch Connect** usually also fills Destinations; turn **On** when OBS is live  
+4. **Kick:** Connect for chat, then paste **Server URL + stream key once** (Kick ingest is per-account)  
+5. Manual **Add destination** still works as a fallback  
 
 Leave destinations On. Stop/start OBS when you go live again — the relay reconnects for you.
 
-**Kick:** paste the Server URL from *your* Kick Creator dashboard (it is per-account).
+**Public users never create a Google Cloud project.** OmnixStudio (or your host) owns one OAuth app / broker; see [Connect platforms](docs/CONNECT-PLATFORMS.md).
 
 ---
 
@@ -158,8 +162,13 @@ docker compose up -d --build
 | Guide | Topic |
 |-------|--------|
 | [Vertical / Aitum](docs/VERTICAL-AITUM.md) | 9:16 feed, Aitum plugins, second OBS option |
-| [YouTube Live manager](docs/YOUTUBE-LIVE.md) | Google OAuth, create broadcast + key into relay |
+| [Privacy: Connect](docs/PRIVACY-CONNECT.md) | Tokens stay on your machine — what we do / don’t store |
+| [Connect platforms](docs/CONNECT-PLATFORMS.md) | YouTube / Twitch / Kick Connect + destinations |
+| [YouTube Live manager](docs/YOUTUBE-LIVE.md) | Create live + operator OAuth notes |
+| [OAuth broker](docs/OAUTH-BROKER.md) | Optional low-level ticket broker |
+| Omnix Link (`Broker/` — separate repo) | Optional website: account + pair StreamRelay + Connect → push tokens |
 | [Mobile chat (PWA)](docs/MOBILE-CHAT.md) | Phone/tablet chat companion |
+| [Desktop (Tauri)](docs/DESKTOP.md) | Lightweight Windows app + chat overlay |
 
 ## Project layout
 

@@ -18,6 +18,13 @@ if [[ -f "$DATA_DIR/ports.env" ]]; then
   set -a; source "$DATA_DIR/ports.env"; set +a
 fi
 
+# Product OAuth (operator-only — never shown in egg UI). Example:
+# YOUTUBE_CLIENT_ID=… YOUTUBE_CLIENT_SECRET=… OAUTH_BROKER_URL=… OAUTH_BROKER_SECRET=…
+if [[ -f "$DATA_DIR/oauth.env" ]]; then
+  # shellcheck disable=SC1090
+  set -a; source "$DATA_DIR/oauth.env"; set +a
+fi
+
 # --- Public hostname ---
 if [[ -z "${PUBLIC_HOST:-}" && -f "$DATA_DIR/public_host" ]]; then
   PUBLIC_HOST="$(tr -d '[:space:]' < "$DATA_DIR/public_host")"

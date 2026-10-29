@@ -1,50 +1,37 @@
-# YouTube Live manager
+# YouTube Live manager (Streamlabs-style Connect)
 
-Omnix can create a YouTube Control Room broadcast (title, description, privacy, thumbnail), bind RTMP, and push the stream key into a dashboard destination — so you do not paste keys by hand every session.
+## For streamers (normal use)
 
-## 1. Google Cloud OAuth client
+1. Start the Omnix egg / server.
+2. Open the dashboard → log in with the bootstrap token from `FIRST_LOGIN.txt`.
+3. Click **Connect Google** → pick your Google account → **Allow**.
+4. Fill title / description / privacy / thumbnail → **Create YouTube live**.
+5. Point OBS at the Connection details (Server + stream key). Leave Destinations **On**.
 
-1. Open [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services.
-2. Enable **YouTube Data API v3**.
-3. Create **OAuth client ID** → type **Web application**.
-4. Add an **Authorized redirect URI** exactly as shown in the Omnix dashboard under **YouTube Live manager** (example):
+You never paste a Client ID, Client Secret, or API key into the egg.
 
-   `http://YOUR_HOST:DASH_PORT/api/v1/youtube/oauth/callback`
+## For OmnixStudio operators (once per product / host)
 
-   Prefer HTTPS if you terminate TLS in front of the panel. Set egg/env:
+Google still requires **one** OAuth app owned by the product (same as Streamlabs). Streamers never see it.
 
-   - `YOUTUBE_OAUTH_SCHEME=https` when the public URL is HTTPS  
-   - or `YOUTUBE_REDIRECT_URI=https://…/api/v1/youtube/oauth/callback` for a full override
+### Option A — Omnix OAuth broker (recommended for public / many hosts)
 
-5. Copy **Client ID** and **Client secret**.
+Run [`oauth-broker/`](../oauth-broker/) at e.g. `https://auth.omnixstudio.xyz` with product Google (and Twitch/Kick) credentials. On each egg set:
 
-## 2. Egg / environment
+- `OAUTH_BROKER_URL=https://auth.omnixstudio.xyz`
+- `OAUTH_BROKER_SECRET=…` (shared HMAC; put in `data/oauth.env`, not the public egg UI)
 
-| Variable | Required |
-|----------|----------|
-| `YOUTUBE_CLIENT_ID` | Yes |
-| `YOUTUBE_CLIENT_SECRET` | Yes |
-| `YOUTUBE_REDIRECT_URI` | Optional override |
-| `YOUTUBE_OAUTH_SCHEME` | Optional `http` / `https` |
+### Option B — Direct OAuth on one host (Mumbai / lab)
 
-Restart the server after changing these.
+Create a Web OAuth client once, enable YouTube Data API v3, then on that host only create `data/oauth.env`:
 
-## 3. Connect in the dashboard
+```bash
+YOUTUBE_CLIENT_ID=…
+YOUTUBE_CLIENT_SECRET=…
+YOUTUBE_OAUTH_SCHEME=http
+# or YOUTUBE_REDIRECT_URI=http://HOST:PORT/api/v1/youtube/oauth/callback
+```
 
-1. Open Omnix → **YouTube Live manager**.
-2. Click **Connect Google** and approve access (YouTube scopes).
-3. If the panel is plain HTTP and Google rejects the redirect, use **Paste refresh token** (OAuth Playground / Cloud) instead.
+Add the redirect URI shown by a direct-mode host to the Google OAuth client. Restart the egg.
 
-## 4. Create a live
-
-1. Fill **title**, **description**, **privacy**, **feed** (main or vertical).
-2. Optional thumbnail (JPEG/PNG/WebP, under 2MB).
-3. Click **Create YouTube live**.
-4. Omnix writes `rtmp://a.rtmp.youtube.com/live2` + the new key into destination `youtube` or `youtube-v` and can enable it.
-5. Start OBS into the relay as usual — YouTube should leave “Preparing” once data arrives.
-
-Create **main** and **vertical** separately if you need both keys.
-
-## 5. Chat
-
-When a broadcast includes a live chat id, Omnix stores it and restarts the chat engine so YouTube chat can appear in **Live chat** / `/chat.html` (still needs a successful OAuth token).
+Do **not** put these values in streamer-facing Startup fields.

@@ -10,6 +10,7 @@ import { createTwitchProvider } from "./twitch.js";
 import { createYouTubeProvider } from "./youtube.js";
 import { createKickProvider } from "./kick.js";
 import { getLiveChatId, youtubeConnected } from "../youtube/tokens.js";
+import { platformConnected } from "../oauth/platform-tokens.js";
 
 type HubListener = (msg: ChatMessage) => void;
 
@@ -101,8 +102,9 @@ export function chatDiagnostics(): {
 } {
   const connected = activePlatforms();
   const missing: Array<{ platform: Platform; need: string }> = [];
-  if (!config.twitch.channel || !config.twitch.accessToken) {
-    missing.push({ platform: "twitch", need: "TWITCH_CHANNEL + TWITCH_ACCESS_TOKEN" });
+  const twitchCh = getSetting("twitch_channel_override") || config.twitch.channel;
+  if (!twitchCh || (!platformConnected("twitch") && !config.twitch.accessToken)) {
+    missing.push({ platform: "twitch", need: "Connect Twitch in the dashboard (or set TWITCH_CHANNEL + token)" });
   } else if (!connected.includes("twitch")) {
     missing.push({ platform: "twitch", need: "configured but failed to connect — check token" });
   }
@@ -116,8 +118,9 @@ export function chatDiagnostics(): {
   } else if (!connected.includes("youtube")) {
     missing.push({ platform: "youtube", need: "configured but failed to connect — try restart chat" });
   }
-  if (!config.kick.channel) {
-    missing.push({ platform: "kick", need: "KICK_CHANNEL (+ optional KICK_ACCESS_TOKEN to reply)" });
+  const kickCh = getSetting("kick_channel_override") || config.kick.channel;
+  if (!kickCh) {
+    missing.push({ platform: "kick", need: "Connect Kick in the dashboard (or set KICK_CHANNEL)" });
   } else if (!connected.includes("kick")) {
     missing.push({ platform: "kick", need: "configured but Kick chat lib failed — check logs" });
   }

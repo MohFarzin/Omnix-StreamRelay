@@ -1,0 +1,70 @@
+:root {
+  --bg: #0a0c10;
+  --panel: #161b24;
+  --text: #eef2f7;
+  --muted: #9aa6b8;
+  --accent: #5b9dff;
+  --line: #2a3140;
+  --bad: #ff6b7a;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  background: radial-gradient(700px 400px at 20% -10%, #1a2a4499, transparent 55%), var(--bg);
+  color: var(--text);
+}
+.boot {
+  width: min(420px, 92vw);
+  margin: 12vh auto;
+  padding: 1.25rem;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  display: grid;
+  gap: 0.65rem;
+}
+h1 { margin: 0; font-size: 1.25rem; }
+.sub, label { color: var(--muted); font-size: 0.9rem; }
+label { display: grid; gap: 0.3rem; }
+input, button {
+  font: inherit;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #12161d;
+  color: var(--text);
+  padding: 0.55rem 0.75rem;
+}
+button {
+  background: var(--accent);
+  border-color: transparent;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+button.ghost {
+  background: transparent;
+  border-color: var(--line);
+  color: var(--muted);
+}
+.row { display: flex; gap: 0.45rem; flex-wrap: wrap; }
+.err { color: var(--bad); margin: 0; }
+
+body.overlay-mode {
+  background: transparent;
+}
+.overlay-wrap {
+  padding: 0.5rem;
+  max-height: 100vh;
+  overflow: auto;
+}
+.overlay-wrap .row {
+  background: rgba(10, 12, 16, 0.72);
+  border-radius: 8px;
+  padding: 0.35rem 0.55rem;
+  margin-bottom: 0.3rem;
+  font-size: 0.92rem;
+  backdrop-filter: blur(6px);
+}
+.overlay-wrap .plat { color: var(--accent); font-size: 0.75rem; margin-right: 0.35rem; }

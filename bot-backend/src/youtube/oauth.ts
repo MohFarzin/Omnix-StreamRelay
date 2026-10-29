@@ -1,11 +1,13 @@
 import { randomBytes } from "node:crypto";
 import { config } from "../config.js";
+import { brokerConfigured, brokerRefresh, buildBrokerConnectUrl } from "../oauth/broker-client.js";
 import {
   consumeOAuthState,
   getStoredAccessToken,
   getStoredRefreshToken,
   saveYoutubeTokens,
   setOAuthState,
+  youtubeConnectMode,
   youtubeOAuthConfigured,
 } from "./tokens.js";
 
@@ -23,14 +25,16 @@ export function redirectUri(): string {
   return `${scheme}://${host}:${port}/api/v1/youtube/oauth/callback`;
 }
 
-export function buildAuthUrl(): { url: string; state: string } {
-  if (!youtubeOAuthConfigured()) {
-    throw Object.assign(new Error("Set YOUTUBE_CLIENT_ID and YOUTUBE_CLIENT_SECRET on the server"), {
-      statusCode: 400,
-    });
+export function buildAuthUrl(): { url: string; state: string; mode: "broker" | "direct" } {
+  const mode = youtubeConnectMode();
+  if (mode === "none") {
+    throw Object.assign(new Error("YouTube Connect is unavailable on this build"), { statusCode: 503 });
   }
   const state = randomBytes(16).toString("hex");
   setOAuthState(state);
+  if (mode === "broker") {
+    return { url: buildBrokerConnectUrl("youtube", state), state, mode };
+  }
   const params = new URLSearchParams({
     client_id: config.youtube.clientId,
     redirect_uri: redirectUri(),
@@ -40,15 +44,13 @@ export function buildAuthUrl(): { url: string; state: string } {
     prompt: "consent",
     state,
   });
-  return { url: `https://accounts.google.com/o/oauth2/v2/auth?${params}`, state };
+  return { url: `https://accounts.google.com/o/oauth2/v2/auth?${params}`, state, mode };
 }
 
 async function tokenRequest(body: Record<string, string>): Promise<{
   access_token: string;
   refresh_token?: string;
   expires_in?: number;
-  error?: string;
-  error_description?: string;
 }> {
   const res = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
@@ -68,17 +70,18 @@ async function tokenRequest(body: Record<string, string>): Promise<{
       { statusCode: 400 }
     );
   }
-  return json as {
-    access_token: string;
-    refresh_token?: string;
-    expires_in?: number;
-  };
+  return json as { access_token: string; refresh_token?: string; expires_in?: number };
 }
 
 export async function exchangeCode(code: string, state: string): Promise<void> {
   if (!consumeOAuthState(state)) {
     throw Object.assign(new Error("Invalid or expired OAuth state — try Connect Google again"), {
       statusCode: 400,
+    });
+  }
+  if (!config.youtube.clientId || !config.youtube.clientSecret) {
+    throw Object.assign(new Error("Direct YouTube OAuth is not configured on this host"), {
+      statusCode: 503,
     });
   }
   const json = await tokenRequest({
@@ -95,15 +98,19 @@ export async function exchangeCode(code: string, state: string): Promise<void> {
   });
 }
 
+/** Ops-only fallback — not shown in normal Streamlabs-style UI. */
 export async function savePastedRefreshToken(refreshToken: string): Promise<void> {
   const token = refreshToken.trim();
   if (token.length < 20) {
     throw Object.assign(new Error("refresh token looks too short"), { statusCode: 400 });
   }
-  if (!youtubeOAuthConfigured()) {
-    throw Object.assign(new Error("Set YOUTUBE_CLIENT_ID and YOUTUBE_CLIENT_SECRET first"), {
-      statusCode: 400,
-    });
+  if (!youtubeOAuthConfigured() || brokerConfigured()) {
+    // Allow paste only for direct mode
+    if (!config.youtube.clientId || !config.youtube.clientSecret) {
+      throw Object.assign(new Error("Paste-token fallback needs direct OAuth on this host"), {
+        statusCode: 400,
+      });
+    }
   }
   const json = await tokenRequest({
     client_id: config.youtube.clientId,
@@ -128,11 +135,20 @@ export async function getValidAccessToken(): Promise<string> {
       statusCode: 401,
     });
   }
-  if (!youtubeOAuthConfigured()) {
-    if (cached?.token) return cached.token;
-    throw Object.assign(new Error("YOUTUBE_CLIENT_ID / SECRET required to refresh"), {
-      statusCode: 400,
+
+  if (brokerConfigured()) {
+    const json = await brokerRefresh("youtube", refresh);
+    saveYoutubeTokens({
+      accessToken: json.accessToken,
+      refreshToken: json.refreshToken,
+      expiresIn: json.expiresIn,
     });
+    return json.accessToken;
+  }
+
+  if (!config.youtube.clientId || !config.youtube.clientSecret) {
+    if (cached?.token) return cached.token;
+    throw Object.assign(new Error("YouTube Connect is unavailable on this build"), { statusCode: 503 });
   }
   const json = await tokenRequest({
     client_id: config.youtube.clientId,

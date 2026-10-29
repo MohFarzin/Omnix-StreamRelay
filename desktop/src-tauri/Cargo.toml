@@ -1,0 +1,19 @@
+[package]
+name = "omnix-streamrelay-desktop"
+version = "1.0.0"
+description = "Lightweight Omnix StreamRelay desktop + chat overlay"
+authors = ["OmnixStudio"]
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[lib]
+name = "omnix_streamrelay_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]

@@ -475,6 +475,36 @@ details summary {
   box-shadow: 0 8px 28px #0008;
 }
 
+.connect-grid {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 0.75rem;
+}
+.connect-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg2);
+}
+@media (max-width: 640px) {
+  .connect-card { flex-direction: column; align-items: stretch; }
+}
+.device-code {
+  font-family: var(--mono);
+  font-size: 1.65rem;
+  letter-spacing: 0.18em;
+  font-weight: 700;
+  text-align: center;
+  padding: 0.75rem;
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin: 0.35rem 0 0.75rem;
+}
 .yt-panel { margin-top: 0.9rem; display: grid; gap: 0.75rem; }
 .yt-form { margin-top: 0.35rem; }
 .yt-row {
