@@ -41,9 +41,7 @@ export function platformConnected(platform: Platform): boolean {
     try {
       decrypt(enc);
       return true;
-    } catch {
-      /* fall through */
-    }
+    } catch {}
   }
   if (platform === "twitch") return Boolean(config.twitch.accessToken);
   if (platform === "kick") return Boolean(config.kick.accessToken);

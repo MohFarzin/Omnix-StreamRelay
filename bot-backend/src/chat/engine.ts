@@ -95,7 +95,7 @@ export function activePlatforms(): Platform[] {
   return providers.map((p) => p.platform);
 }
 
-/** Why chat is empty — for dashboard notice. */
+
 export function chatDiagnostics(): {
   connected: Platform[];
   missing: Array<{ platform: Platform; need: string }>;

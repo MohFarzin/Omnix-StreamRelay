@@ -112,9 +112,7 @@ function connectWs() {
   if (state.ws) {
     try {
       state.ws.close();
-    } catch {
-      /* ignore */
-    }
+    } catch {}
   }
   const proto = location.protocol === "https:" ? "wss" : "ws";
   const ws = new WebSocket(`${proto}://${location.host}/api/v1/ws`);
@@ -144,9 +142,7 @@ async function enter() {
   try {
     const s = await api("/api/v1/setup");
     renderChatStatus(s.chat);
-  } catch {
-    /* ignore */
-  }
+  } catch {}
 }
 
 $("loginBtn").onclick = async () => {
@@ -183,9 +179,7 @@ $("logoutBtn").onclick = () => {
   localStorage.removeItem("omnix_refresh");
   try {
     state.ws?.close();
-  } catch {
-    /* ignore */
-  }
+  } catch {}
   showApp(false);
 };
 

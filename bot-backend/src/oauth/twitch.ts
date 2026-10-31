@@ -13,13 +13,13 @@ const SCOPES = [
   "chat:edit",
   "user:read:email",
   "channel:read:stream_key",
+  "channel:manage:broadcast",
 ].join(" ");
 
 export function twitchDirectConfigured(): boolean {
   return Boolean(config.twitch.clientId && config.twitch.clientSecret);
 }
 
-/** Prefer local Connect — tokens stay on this egg. */
 export function twitchConnectMode(): "broker" | "direct" | "none" {
   if (twitchDirectConfigured()) return "direct";
   if (brokerConfigured()) return "broker";
@@ -115,7 +115,6 @@ export async function exchangeTwitchCode(code: string): Promise<{
     const keyJson = (await keyRes.json()) as { data?: Array<{ stream_key?: string }> };
     streamKey = keyJson.data?.[0]?.stream_key;
   } catch {
-    /* optional */
   }
 
   if (streamKey) {

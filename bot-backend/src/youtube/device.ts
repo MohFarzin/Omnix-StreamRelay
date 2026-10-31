@@ -1,8 +1,8 @@
-/**
- * Google OAuth device-code flow.
- * Tokens are requested and stored only on this Omnix instance — never sent to OmnixStudio.
- * Requires a Google OAuth client that allows the device flow (or falls back to redirect Connect).
- */
+
+
+
+
+
 import { config } from "../config.js";
 import { saveYoutubeTokens } from "./tokens.js";
 
@@ -21,7 +21,7 @@ export type DeviceSession = {
   expiresAt: number;
 };
 
-/** In-memory pending device sessions (per process). */
+
 const pending = new Map<string, DeviceSession & { id: string }>();
 
 export function deviceFlowConfigured(): boolean {
@@ -81,7 +81,7 @@ export async function startDeviceFlow(): Promise<{
     intervalSec,
     expiresAt: Date.now() + expiresIn * 1000,
   });
-  // prune old
+
   for (const [k, v] of pending) {
     if (v.expiresAt < Date.now()) pending.delete(k);
   }

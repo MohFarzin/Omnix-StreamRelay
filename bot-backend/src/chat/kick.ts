@@ -3,11 +3,32 @@ import { getSetting } from "../db.js";
 import { getPlatformAccess } from "../oauth/platform-tokens.js";
 import type { ChatMessage, ChatProvider } from "./types.js";
 
-/**
- * Kick via @gbrlstr/kick-flow when installed; otherwise no-op provider skipped.
- * shortcut: unofficial WS client, upgrade to official webhooks when DOMAIN + Kick app ready
- */
+async function resolveChatroomId(channel: string): Promise<number | null> {
+  const slug = channel.replace(/^@/, "").trim().toLowerCase();
+  if (!slug) return null;
+  try {
+    const res = await fetch(`https://kick.com/api/v2/channels/${encodeURIComponent(slug)}`, {
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "OmnixStreamRelay/1.0",
+      },
+    });
+    if (!res.ok) return null;
+    const j = (await res.json()) as {
+      chatroom?: { id?: number };
+      id?: number;
+    };
+    const id = j.chatroom?.id;
+    return typeof id === "number" ? id : null;
+  } catch {
+    return null;
+  }
+}
+
 export function createKickProvider(): ChatProvider | null {
+  if (/^(0|false|off|no)$/i.test(String(process.env.KICK_CHAT || "1").trim())) {
+    return null;
+  }
   const channel = getSetting("kick_channel_override") || config.kick.channel;
   const stored = getPlatformAccess("kick");
   const accessToken = stored?.token || config.kick.accessToken;
@@ -20,6 +41,13 @@ export function createKickProvider(): ChatProvider | null {
   return {
     platform: "kick",
     async start(onMessage) {
+      const chatroomId = await resolveChatroomId(channel);
+      if (!chatroomId) {
+        throw new Error(
+          `Kick chatroom not found for "${channel}" (public API). Chat ingest skipped — video relay still works.`
+        );
+      }
+
       try {
         const mod = (await import("@gbrlstr/kick-flow")) as unknown as {
           KickFlow?: new (o: unknown) => unknown;
@@ -27,10 +55,10 @@ export function createKickProvider(): ChatProvider | null {
         };
         const KickFlow =
           mod.KickFlow ??
-          (typeof mod.default === "function"
-            ? mod.default
-            : mod.default?.KickFlow);
+          (typeof mod.default === "function" ? mod.default : mod.default?.KickFlow);
         if (!KickFlow) throw new Error("KickFlow export missing");
+
+        process.env.PUPPETEER_SKIP_DOWNLOAD = "1";
 
         const client = new KickFlow({
           clientId: clientId || "unused",
@@ -38,6 +66,11 @@ export function createKickProvider(): ChatProvider | null {
           accessToken: accessToken || undefined,
         }) as {
           chat: {
+            connectToChatByChatroomId?: (id: number) => Promise<{
+              on: (ev: string, cb: (m: Record<string, unknown>) => void) => void;
+              connect: () => Promise<void>;
+              disconnect?: () => Promise<void>;
+            }>;
             connectToChatByChannel: (ch: string) => Promise<{
               on: (ev: string, cb: (m: Record<string, unknown>) => void) => void;
               connect: () => Promise<void>;
@@ -46,7 +79,21 @@ export function createKickProvider(): ChatProvider | null {
           };
         };
 
-        const chatWS = await client.chat.connectToChatByChannel(channel);
+        let chatWS: {
+          on: (ev: string, cb: (m: Record<string, unknown>) => void) => void;
+          connect: () => Promise<void>;
+          disconnect?: () => Promise<void>;
+        };
+
+        if (typeof client.chat.connectToChatByChatroomId === "function") {
+          chatWS = await client.chat.connectToChatByChatroomId(chatroomId);
+        } else {
+
+          throw new Error(
+            "Kick chat needs connectToChatByChatroomId (no Chrome in egg). Set KICK_CHAT=0 or upgrade kick-flow."
+          );
+        }
+
         chatWS.on("message", (message) => {
           const sender = (message.sender ?? {}) as { id?: string | number; username?: string };
           const content = String(message.content ?? message.message ?? "");
@@ -72,12 +119,17 @@ export function createKickProvider(): ChatProvider | null {
               Authorization: `Bearer ${accessToken}`,
               "Content-Type": "application/json",
             },
-            body: JSON.stringify({ type: "bot", content: text }),
+            body: JSON.stringify({ type: "bot", content: text, chatroom_id: chatroomId }),
           });
           if (!res.ok) throw new Error(`Kick send ${res.status}`);
         };
       } catch (err) {
-        console.warn("[kick] provider failed to start:", (err as Error).message);
+        const msg = (err as Error).message || String(err);
+        if (/Chrome|puppeteer|chatroom/i.test(msg)) {
+          console.warn("[kick] chat skipped (no browser in egg):", msg.slice(0, 160));
+        } else {
+          console.warn("[kick] provider failed to start:", msg.slice(0, 160));
+        }
         throw err;
       }
     },

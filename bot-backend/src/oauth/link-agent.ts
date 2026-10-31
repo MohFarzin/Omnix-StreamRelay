@@ -2,7 +2,6 @@ import { createHash, createDecipheriv } from "node:crypto";
 import { getSetting, setSetting } from "../db.js";
 import { ingestLinkPush, revokeLinkPlatform } from "./link.js";
 
-const K_URL = "omnix_link_url";
 const K_TOKEN = "omnix_link_tunnel_token";
 const K_STATUS = "omnix_link_status";
 const K_MSG = "omnix_link_message";
@@ -12,8 +11,10 @@ const DEFAULT_LINK_URL = "https://relaylink.omnixstudio.xyz";
 let timer: ReturnType<typeof setInterval> | null = null;
 let busy = false;
 
+let lastLoggedStatus = "";
+
 function lockedLinkUrl(): string {
-  // Operator-only override via egg env; panel users cannot change the URL.
+
   const fromEnv = (process.env.OMNIX_LINK_URL || "").trim();
   if (fromEnv) return fromEnv.replace(/\/$/, "");
   return DEFAULT_LINK_URL;
@@ -34,15 +35,31 @@ export function saveLinkAgentConfig(input: { url?: string; tunnelToken?: string 
   status: string;
   message: string;
 } {
-  // Ignore any client-supplied URL — Link host is fixed by OmnixStudio.
-  void input.url;
-  void K_URL;
+
   if (typeof input.tunnelToken === "string") {
     setSetting(K_TOKEN, input.tunnelToken.trim());
     setSetting(K_STATUS, input.tunnelToken.trim() ? "configured" : "idle");
     setSetting(K_MSG, input.tunnelToken.trim() ? "Connecting…" : "");
+    lastLoggedStatus = "";
+    if (input.tunnelToken.trim()) {
+      console.log("[omnix-link] Connecting… paste confirmed, waiting for Omnix Link");
+    }
   }
   void tick().catch(() => undefined);
+  return getLinkAgentConfig();
+}
+
+export function clearLinkAgentConfig(): {
+  url: string;
+  tunnelToken: string;
+  status: string;
+  message: string;
+} {
+  setSetting(K_TOKEN, "");
+  setSetting(K_STATUS, "idle");
+  setSetting(K_MSG, "");
+  lastLoggedStatus = "idle";
+  console.log("[omnix-link] Server marked as stopped (unlinked)");
   return getLinkAgentConfig();
 }
 
@@ -89,14 +106,30 @@ async function tick(): Promise<void> {
       error?: string;
     };
     if (!helloRes.ok) {
+      const err = hello.error || `hello ${helloRes.status}`;
       setSetting(K_STATUS, "error");
-      setSetting(K_MSG, hello.error || `hello ${helloRes.status}`);
+      setSetting(K_MSG, err);
+      if (lastLoggedStatus !== "error") {
+        lastLoggedStatus = "error";
+        console.warn(`[omnix-link] Link error: ${err}`);
+      }
       return;
     }
-    setSetting(K_STATUS, hello.status || "unknown");
+    const st = hello.status || "unknown";
+    setSetting(K_STATUS, st);
     setSetting(K_MSG, hello.message || "");
+    if (st !== lastLoggedStatus) {
+      lastLoggedStatus = st;
+      if (st === "linked") {
+        console.log("[omnix-link] Server marked as started (linked to Omnix Link)");
+      } else if (st === "pending_confirm" || st === "awaiting_confirm") {
+        console.log(`[omnix-link] Waiting for confirm on Omnix Link (${st})`);
+      } else {
+        console.log(`[omnix-link] Status: ${st}${hello.message ? ` — ${hello.message}` : ""}`);
+      }
+    }
 
-    if (hello.status !== "linked") return;
+    if (st !== "linked") return;
 
     const pollRes = await fetch(`${url}/api/v1/agent/poll`, {
       method: "POST",
@@ -145,10 +178,16 @@ async function tick(): Promise<void> {
         body: JSON.stringify({ tunnelToken, ackJobIds: ack }),
       }).catch(() => undefined);
       setSetting(K_MSG, `Received ${ack.length} encrypted token handoff(s)`);
+      console.log(`[omnix-link] Received ${ack.length} encrypted token handoff(s)`);
     }
   } catch (e) {
+    const msg = (e as Error).message || "link agent error";
     setSetting(K_STATUS, "error");
-    setSetting(K_MSG, (e as Error).message || "link agent error");
+    setSetting(K_MSG, msg);
+    if (lastLoggedStatus !== "error") {
+      lastLoggedStatus = "error";
+      console.warn(`[omnix-link] Link error: ${msg}`);
+    }
   } finally {
     busy = false;
   }

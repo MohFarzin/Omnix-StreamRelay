@@ -33,7 +33,7 @@ export async function ingestLinkPush(body: {
   refreshToken?: string | null;
   expiresIn?: number | null;
   extra?: Record<string, string>;
-  /** Outbound Omnix Link agent already authenticated via tunnel token. */
+
   fromAgent?: boolean;
 }): Promise<{ ok: true; platform: string }> {
   if (!body.fromAgent && !verifyLinkPairingCode(String(body.pairingCode || ""))) {
@@ -49,6 +49,12 @@ export async function ingestLinkPush(body: {
       refreshToken: body.refreshToken || undefined,
       expiresIn: body.expiresIn ?? undefined,
     });
+    try {
+      const { ensureYoutubeDestination } = await import("../live/destinations.js");
+      await ensureYoutubeDestination("main");
+      await ensureYoutubeDestination("vertical");
+    } catch {
+    }
   } else if (platform === "twitch" || platform === "kick") {
     const extra = body.extra || {};
     savePlatformTokens(platform, {
@@ -60,22 +66,47 @@ export async function ingestLinkPush(body: {
     if (extra.channel) {
       setSetting(`${platform}_channel_override`, extra.channel);
     }
-    if (platform === "twitch" && extra.user_id) {
+    const { rememberPlatformHandoff, ensureKickDestination, fetchKickStreamKey } = await import(
+      "../live/destinations.js"
+    );
+    rememberPlatformHandoff(platform, extra);
+
+    if (platform === "twitch") {
       try {
-        const keyRes = await fetch(
-          `https://api.twitch.tv/helix/streams/key?broadcaster_id=${encodeURIComponent(extra.user_id)}`,
-          {
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-              "Client-Id": process.env.TWITCH_CLIENT_ID || "",
-            },
+        let streamKey = extra.stream_key || "";
+        if (!streamKey && extra.user_id) {
+          const clientId =
+            process.env.TWITCH_CLIENT_ID || extra.client_id || getSetting("twitch_oauth_client_id") || "";
+          if (clientId) {
+            const keyRes = await fetch(
+              `https://api.twitch.tv/helix/streams/key?broadcaster_id=${encodeURIComponent(extra.user_id)}`,
+              {
+                headers: {
+                  Authorization: `Bearer ${accessToken}`,
+                  "Client-Id": clientId,
+                },
+              }
+            );
+            const keyJson = (await keyRes.json()) as { data?: Array<{ stream_key?: string }> };
+            streamKey = keyJson.data?.[0]?.stream_key || "";
           }
-        );
-        const keyJson = (await keyRes.json()) as { data?: Array<{ stream_key?: string }> };
-        const streamKey = keyJson.data?.[0]?.stream_key;
+        }
         if (streamKey) await pushTwitchDestination(streamKey);
       } catch {
-        /* optional */
+      }
+    }
+    if (platform === "kick") {
+      try {
+        if (extra.stream_key) {
+          await ensureKickDestination({
+            streamKey: extra.stream_key,
+            rtmpUrl: extra.rtmp_url || "rtmps://fa723fc1b171.global-contribute.live-video.net:443/app",
+          });
+        } else {
+          const sk = await fetchKickStreamKey(accessToken);
+          if (sk) await ensureKickDestination(sk);
+        }
+      } catch {
       }
     }
     void restartChatEngine().catch(() => undefined);

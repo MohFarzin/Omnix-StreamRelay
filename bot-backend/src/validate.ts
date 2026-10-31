@@ -47,16 +47,16 @@ export function assertShortText(text: string, max = 500): string {
   return v;
 }
 
-/** Normalize Kick / Twitch / YT server URLs so FFmpeg gets a valid app path. */
+
 export function normalizeIngestUrl(url: string, platform: string): string {
   let u = assertRtmpUrl(url);
   const p = platform.toLowerCase();
   if (p === "kick" || /live-video\.net/i.test(u)) {
     if (u.startsWith("rtmp://")) u = u.replace(/^rtmp:\/\//i, "rtmps://");
-    // Kick/IVS: explicit 443 avoids flaky default-port RTMPS in some FFmpeg builds
+
     u = u.replace(/^(rtmps:\/\/[^/:]+)(?::\d+)?/i, "$1:443");
     if (!/\/app$/i.test(u) && !/\/app\//i.test(u)) u = `${u}/app`;
-    // strip accidental key glued onto server URL (user pasted full path)
+
     u = u.replace(/\/app\/.+$/i, "/app");
   }
   return u;

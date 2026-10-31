@@ -46,6 +46,10 @@ export function createYouTubeProvider(): ChatProvider | null {
     );
     if (!res.ok) {
       const t = await res.text();
+
+      if (res.status === 401 || res.status === 403) {
+        stopped = true;
+      }
       throw new Error(`YouTube chat poll ${res.status}: ${t.slice(0, 200)}`);
     }
     const body = (await res.json()) as {

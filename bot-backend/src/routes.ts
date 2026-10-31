@@ -11,6 +11,7 @@ import {
   listTargets,
   setSetting,
   setTargetEnabled,
+  setTargetError,
   upsertCommand,
   upsertTarget,
 } from "./db.js";
@@ -29,6 +30,7 @@ import {
 } from "./validate.js";
 import { registerYoutubeRoutes } from "./youtube/routes.js";
 import { registerOAuthRoutes } from "./oauth/routes.js";
+import { registerLiveRoutes } from "./live/routes.js";
 
 async function requireAuth(header: string | undefined): Promise<void> {
   if (!header?.startsWith("Bearer ")) throw Object.assign(new Error("Unauthorized"), { statusCode: 401 });
@@ -82,6 +84,7 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   await registerOAuthRoutes(app);
   await registerYoutubeRoutes(app);
+  await registerLiveRoutes(app);
 
   app.get("/api/v1/setup", async (req) => {
     const hostHeader = String(req.headers.host ?? "");
@@ -138,13 +141,27 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
 
   app.get("/api/v1/chat/status", async () => chatDiagnostics());
 
-  app.get("/api/v1/targets", async () =>
-    listTargets().map((t) => {
+  app.get("/api/v1/targets", async () => {
+    const { getRuntimePhase } = await import("./live/runtime.js");
+    const forwarding =
+      getRuntimePhase() === "waiting_obs" ||
+      getRuntimePhase() === "live" ||
+      getRuntimePhase() === "brb" ||
+      getRuntimePhase() === "ending";
+    return listTargets().map((t) => {
       let keyMasked = "******";
+      let pendingYt = false;
       try {
-        keyMasked = maskKey(decrypt(t.stream_key_enc));
+        const plain = decrypt(t.stream_key_enc);
+        pendingYt = t.platform === "youtube" && (!plain || /pending-youtube/i.test(plain));
+        keyMasked = pendingYt ? "not set — Create or Use live" : maskKey(plain);
       } catch {
-        /* ignore */
+      }
+
+      let lastError = t.last_error;
+      if (pendingYt && !forwarding) {
+        lastError = null;
+        if (t.last_error) setTargetError(t.id, null);
       }
       return {
         id: t.id,
@@ -154,10 +171,11 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         rtmpUrl: t.rtmp_url,
         keyMasked,
         enabled: Boolean(t.enabled),
-        lastError: t.last_error,
+        lastError,
+        keyPending: pendingYt || undefined,
       };
-    })
-  );
+    });
+  });
 
   app.put<{
     Params: { id: string };
@@ -193,6 +211,10 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
         enabled: req.body.enabled === undefined ? existing?.enabled : req.body.enabled ? 1 : 0,
         lane,
       });
+      if (streamKeyRaw) {
+        const { setTargetError } = await import("./db.js");
+        setTargetError(id, null);
+      }
       await reconcile();
       return { ok: true };
     } catch (e) {
@@ -204,7 +226,39 @@ export async function registerRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Params: { id: string } }>("/api/v1/targets/:id/enable", async (req, reply) => {
     try {
       const id = assertTargetId(req.params.id);
-      if (!getTarget(id)) return reply.code(404).send({ error: "not found" });
+      const t = getTarget(id);
+      if (!t) return reply.code(404).send({ error: "not found" });
+      const { isPendingYoutubeKey, bindYoutubeKeyFromBroadcast } = await import("./live/destinations.js");
+      if (isPendingYoutubeKey(t)) {
+        if (t.platform !== "youtube") {
+          return reply.code(400).send({
+            error: "YouTube key not set — Create stream or Use an existing Control Room live first",
+          });
+        }
+
+        const lane = t.lane === "vertical" ? "vertical" : "main";
+        const { getLiveSession, saveSessionYouTube } = await import("./live/session.js");
+        const session = getLiveSession();
+        const existingId =
+          lane === "vertical"
+            ? session.youtubeVerticalId || session.youtubeMainId
+            : session.youtubeMainId;
+        const bound = await bindYoutubeKeyFromBroadcast(lane, existingId || "");
+        if (!bound.ok) {
+          const detail = bound.detail || "YouTube key bind failed";
+          return reply.code(400).send({
+            error: /quota/i.test(detail)
+              ? "YouTube API quota exceeded — Edit destination and paste the stream key from Studio, or wait until quota resets"
+              : detail,
+          });
+        }
+        if (lane === "vertical" && session.youtubeMainId) {
+          saveSessionYouTube({
+            verticalId: session.youtubeMainId,
+            watchVertical: session.watchMain || undefined,
+          });
+        }
+      }
       setTargetEnabled(id, true);
       resetTargetBackoff(id);
       await reconcile();

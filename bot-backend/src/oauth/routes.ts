@@ -7,6 +7,7 @@ import {
   saveYoutubeTokens,
   youtubeConnected,
   youtubeConnectMode,
+  youtubeNeedsReconnect,
 } from "../youtube/tokens.js";
 import { brokerConfigured, redeemBrokerTicket } from "./broker-client.js";
 import {
@@ -25,30 +26,37 @@ import {
 } from "./twitch.js";
 import { getPlatformAccess } from "./platform-tokens.js";
 import {
-  getOrCreateLinkPairingCode,
   ingestLinkPush,
   rotateLinkPairingCode,
   verifyLinkPairingCode,
 } from "./link.js";
-import { getLinkAgentConfig, saveLinkAgentConfig } from "./link-agent.js";
-import { config } from "../config.js";
+import { clearLinkAgentConfig, getLinkAgentConfig, saveLinkAgentConfig } from "./link-agent.js";
 
 export async function registerOAuthRoutes(app: FastifyInstance): Promise<void> {
-  /** Omnix Link / Relay Link — egg dials out with tunnel token (no public URL needed). */
+
   app.get("/api/v1/oauth/link/status", async () => {
     const agent = getLinkAgentConfig();
+    const linked = agent.status === "linked";
     return {
       mode: "outbound",
-      linkUrl: agent.url,
-      tunnelToken: agent.tunnelToken ? `${agent.tunnelToken.slice(0, 6)}…` : "",
+      linkUrl: agent.url || "https://relaylink.omnixstudio.xyz",
+      openUrl: "https://relaylink.omnixstudio.xyz/app",
       tunnelTokenSet: Boolean(agent.tunnelToken),
       status: agent.status,
       message: agent.message,
-      pairingCode: getOrCreateLinkPairingCode(),
-      publicUrl: config.publicHost
-        ? `${process.env.OAUTH_RETURN_SCHEME || process.env.YOUTUBE_OAUTH_SCHEME || "http"}://${config.publicHost}:${config.port}`
-        : null,
-      hint: "On https://relaylink.omnixstudio.xyz create a tunnel token, paste it here. Confirm the IP on Omnix Link when this egg connects.",
+      linked,
+      platforms: {
+        youtube: {
+          connected: youtubeConnected(),
+          needsReconnect: youtubeNeedsReconnect(),
+          label: "YouTube",
+        },
+        twitch: { connected: platformConnected("twitch"), label: "Twitch" },
+        kick: { connected: platformConnected("kick"), label: "Kick" },
+      },
+      hint: linked
+        ? "Manage Connect / Remove access on Omnix Link (opens in a new tab)."
+        : "On Omnix Link tap Connect Relay, paste the token here, then confirm on Link.",
     };
   });
 
@@ -57,6 +65,25 @@ export async function registerOAuthRoutes(app: FastifyInstance): Promise<void> {
       url: req.body?.linkUrl,
       tunnelToken: req.body?.tunnelToken,
     });
+  });
+
+  app.post("/api/v1/oauth/link/unlink", async () => {
+    const agent = clearLinkAgentConfig();
+
+    clearYoutubeTokens();
+    clearPlatformTokens("twitch");
+    clearPlatformTokens("kick");
+    setSetting("twitch_channel_override", "");
+    setSetting("kick_channel_override", "");
+    void restartChatEngine().catch(() => undefined);
+    return {
+      ok: true,
+      linked: false,
+      status: agent.status,
+      tunnelTokenSet: false,
+      platformsCleared: true,
+      hint: "Unlinked on this panel. Platform tokens cleared. Pair again from Omnix Link when ready.",
+    };
   });
 
   app.post("/api/v1/oauth/link/rotate", async () => ({
@@ -216,7 +243,6 @@ export async function registerOAuthRoutes(app: FastifyInstance): Promise<void> {
     }
   );
 
-  /** After Twitch Connect, retry pulling stream key into Destinations. */
   app.post("/api/v1/oauth/twitch/sync-key", async (_req, reply) => {
     try {
       const access = getPlatformAccess("twitch");
@@ -292,7 +318,6 @@ export async function registerOAuthRoutes(app: FastifyInstance): Promise<void> {
               const streamKey = keyJson.data?.[0]?.stream_key;
               if (streamKey) await pushTwitchDestination(streamKey);
             } catch {
-              /* optional */
             }
           }
           void restartChatEngine().catch(() => undefined);

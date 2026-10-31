@@ -1,12 +1,18 @@
 import type { FastifyInstance } from "fastify";
 import { encrypt } from "../crypto.js";
-import { getTarget, upsertTarget, setTargetEnabled } from "../db.js";
+import { getSetting, getTarget, setSetting, setTargetEnabled, upsertTarget } from "../db.js";
 import { reconcile, resetTargetBackoff } from "../relay/ffmpeg.js";
 import { restartChatEngine } from "../chat/engine.js";
 import { assertLane, assertShortText, assertStreamKey, assertTargetId } from "../validate.js";
 import { buildAuthUrl, exchangeCode, redirectUri, savePastedRefreshToken } from "./oauth.js";
 import { pollDeviceFlow, startDeviceFlow } from "./device.js";
-import { createAndBindLive } from "./live.js";
+import {
+  createDualEncoderLive,
+  ensureVerticalEncoderStream,
+  getLiveIngest,
+  listManagedLives,
+  listVideoCategories,
+} from "./live.js";
 import {
   clearYoutubeTokens,
   youtubeConnected,
@@ -15,8 +21,84 @@ import {
   getLiveChatId,
 } from "./tokens.js";
 
+const PRESET_KEY = "youtube.live.presets";
+
 function destIdForLane(lane: "main" | "vertical"): string {
   return lane === "vertical" ? "youtube-v" : "youtube";
+}
+
+type LivePreset = {
+  id: string;
+  name: string;
+  title: string;
+  description: string;
+  privacy: "public" | "unlisted" | "private";
+  latency: "normal" | "low" | "ultraLow";
+  categoryId: string;
+  gameTitle: string;
+  updatedAt: string;
+};
+
+function readPresets(): LivePreset[] {
+  try {
+    const raw = getSetting(PRESET_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as LivePreset[];
+    return Array.isArray(parsed) ? parsed.slice(0, 40) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writePresets(list: LivePreset[]): void {
+  setSetting(PRESET_KEY, JSON.stringify(list.slice(0, 40)));
+}
+
+function normalizePresetBody(body: Record<string, unknown> | undefined): Omit<LivePreset, "id" | "updatedAt"> {
+  const privacyRaw = String(body?.privacy ?? "unlisted");
+  const privacy =
+    privacyRaw === "public" || privacyRaw === "private" ? privacyRaw : "unlisted";
+  const latencyRaw = String(body?.latency ?? "normal");
+  const latency =
+    latencyRaw === "low" || latencyRaw === "ultraLow" ? latencyRaw : "normal";
+  return {
+    name: assertShortText(String(body?.name ?? "Preset"), 60),
+    title: String(body?.title ?? "").slice(0, 100),
+    description: String(body?.description ?? "").slice(0, 5000),
+    privacy,
+    latency,
+    categoryId: String(body?.categoryId ?? "").slice(0, 12),
+    gameTitle: String(body?.gameTitle ?? "").slice(0, 80),
+  };
+}
+
+async function pushDestinationFromLive(opts: {
+  lane: "main" | "vertical";
+  rtmpUrl: string;
+  streamKey: string;
+  enable: boolean;
+  targetId?: string;
+  liveChatId?: string | null;
+}): Promise<{ targetId: string; enabled: boolean }> {
+  const id = assertTargetId(String(opts.targetId || destIdForLane(opts.lane)));
+  const existing = getTarget(id);
+  const label =
+    existing?.label ||
+    (opts.lane === "vertical" ? "YouTube · Shorts encoder" : "YouTube · main");
+  upsertTarget({
+    id,
+    label,
+    platform: "youtube",
+    rtmp_url: opts.rtmpUrl,
+    stream_key_enc: encrypt(assertStreamKey(opts.streamKey)),
+    enabled: opts.enable ? 1 : existing?.enabled ?? 0,
+    lane: opts.lane,
+  });
+  resetTargetBackoff(id);
+  if (opts.enable) setTargetEnabled(id, true);
+  await reconcile();
+  void restartChatEngine().catch(() => undefined);
+  return { targetId: id, enabled: opts.enable };
 }
 
 export async function registerYoutubeRoutes(app: FastifyInstance): Promise<void> {
@@ -38,7 +120,6 @@ export async function registerYoutubeRoutes(app: FastifyInstance): Promise<void>
     };
   });
 
-  /** Preferred: device code — Google talks to this egg only. */
   app.post("/api/v1/youtube/oauth/device/start", async (_req, reply) => {
     try {
       return await startDeviceFlow();
@@ -59,7 +140,6 @@ export async function registerYoutubeRoutes(app: FastifyInstance): Promise<void>
     }
   });
 
-  /** Fallback: browser redirect back to this egg (still local tokens). */
   app.get("/api/v1/youtube/oauth/start", async (_req, reply) => {
     try {
       const { url, mode } = buildAuthUrl();
@@ -70,7 +150,6 @@ export async function registerYoutubeRoutes(app: FastifyInstance): Promise<void>
     }
   });
 
-  // Browser redirect from Google (may arrive without Authorization header — use one-time state)
   app.get<{ Querystring: { code?: string; state?: string; error?: string } }>(
     "/api/v1/youtube/oauth/callback",
     async (req, reply) => {
@@ -107,6 +186,116 @@ export async function registerYoutubeRoutes(app: FastifyInstance): Promise<void>
     return { ok: true, connected: false };
   });
 
+  app.get("/api/v1/youtube/live/list", async (_req, reply) => {
+    try {
+      const lives = await listManagedLives();
+      return { lives };
+    } catch (e) {
+      const err = e as Error & { statusCode?: number };
+      return reply.code(err.statusCode ?? 400).send({ error: err.message });
+    }
+  });
+
+  app.get<{ Querystring: { region?: string } }>("/api/v1/youtube/categories", async (req, reply) => {
+    try {
+      const categories = await listVideoCategories(String(req.query.region || "US"));
+      return { categories };
+    } catch (e) {
+      const err = e as Error & { statusCode?: number };
+      return reply.code(err.statusCode ?? 400).send({ error: err.message });
+    }
+  });
+
+  app.get("/api/v1/youtube/live/presets", async () => ({ presets: readPresets() }));
+
+  app.post<{ Body: Record<string, unknown> }>("/api/v1/youtube/live/presets", async (req, reply) => {
+    try {
+      const base = normalizePresetBody(req.body);
+      if (!base.title && !base.description && !base.gameTitle) {
+        return reply.code(400).send({ error: "Preset needs a title, description, or game" });
+      }
+      const list = readPresets();
+      const preset: LivePreset = {
+        id: `p_${Date.now().toString(36)}`,
+        ...base,
+        updatedAt: new Date().toISOString(),
+      };
+      list.unshift(preset);
+      writePresets(list);
+      return { ok: true, preset, presets: readPresets() };
+    } catch (e) {
+      const err = e as Error & { statusCode?: number };
+      return reply.code(err.statusCode ?? 400).send({ error: err.message });
+    }
+  });
+
+  app.delete<{ Params: { id: string } }>("/api/v1/youtube/live/presets/:id", async (req, reply) => {
+    const id = String(req.params.id || "");
+    if (!id) return reply.code(400).send({ error: "id required" });
+    const next = readPresets().filter((p) => p.id !== id);
+    writePresets(next);
+    return { ok: true, presets: next };
+  });
+
+  app.post<{
+    Body: {
+      broadcastId?: string;
+      lane?: string;
+      targetId?: string;
+      enable?: boolean;
+    };
+  }>("/api/v1/youtube/live/use", async (req, reply) => {
+    try {
+      const lane = assertLane(req.body?.lane ?? "main");
+      const enable = req.body?.enable !== false;
+      const broadcastId = String(req.body?.broadcastId ?? "");
+      const ingest = await getLiveIngest(broadcastId);
+
+      const keys =
+        lane === "vertical"
+          ? await ensureVerticalEncoderStream()
+          : {
+              streamId: ingest.streamId,
+              streamKey: ingest.streamKey,
+              rtmpUrl: ingest.rtmpUrl,
+            };
+      const pushed = await pushDestinationFromLive({
+        lane,
+        rtmpUrl: keys.rtmpUrl,
+        streamKey: keys.streamKey,
+        enable,
+        targetId: req.body?.targetId,
+        liveChatId: ingest.broadcast.liveChatId,
+      });
+
+      const { getLiveSession, saveSessionYouTube, setSessionStatus } = await import("../live/session.js");
+      const cur = getLiveSession();
+      if (cur.status !== "live") {
+        saveSessionYouTube({
+          mainId: lane === "main" ? ingest.broadcast.broadcastId : cur.youtubeMainId || ingest.broadcast.broadcastId,
+          verticalId: ingest.broadcast.broadcastId,
+          watchMain:
+            lane === "main" ? ingest.broadcast.watchUrl : cur.watchMain || ingest.broadcast.watchUrl,
+          watchVertical: ingest.broadcast.watchUrl,
+          status: "prepared",
+        });
+        setSessionStatus("prepared");
+      }
+      return {
+        ok: true,
+        ...ingest.broadcast,
+        streamId: keys.streamId,
+        streamKey: keys.streamKey,
+        rtmpUrl: keys.rtmpUrl,
+        session: getLiveSession(),
+        ...pushed,
+      };
+    } catch (e) {
+      const err = e as Error & { statusCode?: number };
+      return reply.code(err.statusCode ?? 400).send({ error: err.message });
+    }
+  });
+
   app.post<{
     Body: {
       title?: string;
@@ -118,6 +307,9 @@ export async function registerYoutubeRoutes(app: FastifyInstance): Promise<void>
       targetId?: string;
       enable?: boolean;
       scheduledStartIso?: string;
+      latency?: string;
+      categoryId?: string;
+      gameTitle?: string;
     };
   }>("/api/v1/youtube/live/create", async (req, reply) => {
     try {
@@ -127,12 +319,17 @@ export async function registerYoutubeRoutes(app: FastifyInstance): Promise<void>
       const privacyRaw = String(req.body?.privacy ?? "unlisted");
       const privacy =
         privacyRaw === "public" || privacyRaw === "private" ? privacyRaw : "unlisted";
+      const latencyRaw = String(req.body?.latency ?? "normal");
+      const latency =
+        latencyRaw === "low" || latencyRaw === "ultraLow" ? latencyRaw : "normal";
 
-      const created = await createAndBindLive({
+      const dual = await createDualEncoderLive({
         title,
         description,
         privacy,
-        lane,
+        latency,
+        categoryId: req.body?.categoryId ? String(req.body.categoryId).slice(0, 12) : undefined,
+        gameTitle: req.body?.gameTitle ? String(req.body.gameTitle).slice(0, 80) : undefined,
         thumbnailBase64: req.body?.thumbnailBase64
           ? String(req.body.thumbnailBase64).slice(0, 2_800_000)
           : undefined,
@@ -141,33 +338,54 @@ export async function registerYoutubeRoutes(app: FastifyInstance): Promise<void>
           ? String(req.body.scheduledStartIso).slice(0, 40)
           : undefined,
       });
+      const created = {
+        broadcastId: dual.broadcastId,
+        watchUrl: dual.watchUrl,
+        liveChatId: dual.liveChatId,
+        streamId: lane === "vertical" ? dual.vertical.streamId : dual.main.streamId,
+        streamKey: lane === "vertical" ? dual.vertical.streamKey : dual.main.streamKey,
+        rtmpUrl: lane === "vertical" ? dual.vertical.rtmpUrl : dual.main.rtmpUrl,
+        thumbnailError: dual.thumbnailError,
+      };
 
-      const id = assertTargetId(String(req.body?.targetId || destIdForLane(lane)));
-      const existing = getTarget(id);
-      const label =
-        existing?.label ||
-        (lane === "vertical" ? "YouTube · vertical" : "YouTube · main");
       const enable = req.body?.enable !== false;
-
-      upsertTarget({
-        id,
-        label,
-        platform: "youtube",
-        rtmp_url: created.rtmpUrl,
-        stream_key_enc: encrypt(assertStreamKey(created.streamKey)),
-        enabled: enable ? 1 : existing?.enabled ?? 0,
+      const pushed = await pushDestinationFromLive({
         lane,
+        rtmpUrl: created.rtmpUrl,
+        streamKey: created.streamKey,
+        enable,
+        targetId: req.body?.targetId,
+        liveChatId: created.liveChatId,
       });
-      resetTargetBackoff(id);
-      if (enable) setTargetEnabled(id, true);
-      await reconcile();
-      void restartChatEngine().catch(() => undefined);
+
+      if (lane === "main") {
+        await pushDestinationFromLive({
+          lane: "vertical",
+          rtmpUrl: dual.vertical.rtmpUrl,
+          streamKey: dual.vertical.streamKey,
+          enable: false,
+          liveChatId: dual.liveChatId,
+        }).catch(() => undefined);
+      }
+
+      const { getLiveSession, saveSessionYouTube, setSessionStatus } = await import("../live/session.js");
+      const cur = getLiveSession();
+      if (cur.status !== "live") {
+        saveSessionYouTube({
+          mainId: dual.broadcastId,
+          verticalId: dual.broadcastId,
+          watchMain: dual.watchUrl,
+          watchVertical: dual.watchUrl,
+          status: cur.status === "idle" ? "prepared" : undefined,
+        });
+        if (cur.status === "idle") setSessionStatus("prepared");
+      }
 
       return {
         ok: true,
         ...created,
-        targetId: id,
-        enabled: enable,
+        ...pushed,
+        session: getLiveSession(),
       };
     } catch (e) {
       const err = e as Error & { statusCode?: number };

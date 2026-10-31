@@ -5,14 +5,12 @@ import { brokerConfigured, buildBrokerConnectUrl } from "./broker-client.js";
 import { savePlatformTokens } from "./platform-tokens.js";
 import { setOAuthState } from "../youtube/tokens.js";
 
-/** Kick OAuth scopes — chat + identity. Stream Server URL/key stay per-account (paste once). */
-const SCOPES = "user:read channel:read chat:write";
+const SCOPES = "user:read channel:read channel:write streamkey:read chat:write";
 
 export function kickDirectConfigured(): boolean {
   return Boolean(config.kick.clientId && config.kick.clientSecret);
 }
 
-/** Prefer local Connect — tokens stay on this egg. */
 export function kickConnectMode(): "broker" | "direct" | "none" {
   if (kickDirectConfigured()) return "direct";
   if (brokerConfigured()) return "broker";
@@ -80,7 +78,6 @@ export async function exchangeKickCode(code: string): Promise<{ channel?: string
       channel = body.data?.[0]?.name || body.data?.[0]?.username || "";
     }
   } catch {
-    /* optional */
   }
 
   savePlatformTokens("kick", {

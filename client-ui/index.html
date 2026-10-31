@@ -11,7 +11,7 @@
   <title>Omnix StreamRelay</title>
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="/styles.css?v=20261029link1" />
+  <link rel="stylesheet" href="/styles.css?v=20261031destedit1" />
 </head>
 <body>
   <div id="login" class="panel login">
@@ -109,77 +109,233 @@
       <div class="setup-head">
         <div>
           <h2>Omnix Link</h2>
-          <p class="hint">Connect YouTube / Twitch / Kick only on <a href="https://relaylink.omnixstudio.xyz" target="_blank" rel="noopener">relaylink.omnixstudio.xyz</a>. Paste the Connect Relay token here once, then manage accounts on Link (including Remove access).</p>
+          <p class="hint" id="linkHint">Paste a Connect Relay token once. Platforms are managed on Omnix Link.</p>
         </div>
       </div>
-      <label class="field">
-        <span>Connect token</span>
-        <input id="linkTunnelToken" type="text" placeholder="paste token from Omnix Link → Connect Relay" autocomplete="off" spellcheck="false" />
-      </label>
-      <div class="row-actions">
-        <button id="linkSaveBtn" type="button">Save &amp; connect</button>
+
+      <div id="linkConnectedView" class="link-connected" hidden>
+        <p class="hint" id="linkStatusLine">Status: …</p>
+        <div class="link-plat-grid" id="linkPlatforms">
+          <div class="link-plat" data-plat="youtube"><span>YouTube</span><strong id="linkYtPill">…</strong></div>
+          <div class="link-plat" data-plat="twitch"><span>Twitch</span><strong id="linkTwitchPill">…</strong></div>
+          <div class="link-plat" data-plat="kick"><span>Kick</span><strong id="linkKickPill">…</strong></div>
+        </div>
+        <div class="row-actions link-actions">
+          <a id="linkOpenBtn" class="btn" href="https://relaylink.omnixstudio.xyz/app" target="_blank" rel="noopener">Open Omnix Link</a>
+          <button id="linkChangeBtn" type="button" class="ghost">Replace token</button>
+          <button id="linkUnlinkBtn" type="button" class="ghost danger-ghost">Unlink</button>
+        </div>
       </div>
-      <p class="hint" id="linkStatusLine">Status: …</p>
+
+      <div id="linkSetupView" class="link-setup" hidden>
+        <label class="field">
+          <span>Connect token</span>
+          <input id="linkTunnelToken" type="password" placeholder="paste token from Omnix Link → Connect Relay" autocomplete="off" spellcheck="false" />
+        </label>
+        <label class="check link-show-token">
+          <input type="checkbox" id="linkShowToken" />
+          Show token
+        </label>
+        <div class="row-actions">
+          <button id="linkSaveBtn" type="button">Save &amp; connect</button>
+          <button id="linkCancelChangeBtn" type="button" class="ghost" hidden>Cancel</button>
+        </div>
+        <p class="hint" id="linkSetupStatus">Not connected yet.</p>
+      </div>
+
       <p class="hint" id="ytStatus" hidden></p>
       <p class="hint" id="twitchStatus" hidden></p>
       <p class="hint" id="kickStatus" hidden></p>
     </section>
 
-    <section id="ytPanel" class="panel yt-panel">
+    <section id="livePanel" class="panel yt-panel">
       <div class="setup-head">
         <div>
-          <h2>YouTube Live manager</h2>
-          <p class="hint">Create a Control Room live and push the stream key into Destinations.</p>
+          <h2>Live Manager</h2>
+          <p class="hint">Create → Start. Status shows waiting / live / BRB. Media Manager loops starting-soon &amp; be-right-back videos with configurable timers.</p>
+        </div>
+        <div class="row-actions">
+          <button id="lmModeAio" type="button" class="ghost lm-mode on">AIO</button>
+          <button id="lmModeCustom" type="button" class="ghost lm-mode">Custom</button>
         </div>
       </div>
-      <form id="ytLiveForm" class="dest-form yt-form">
-        <label>Title
-          <input name="title" id="ytTitle" required maxlength="100" placeholder="Tonight’s stream title" />
-        </label>
-        <label>Description
-          <textarea name="description" id="ytDesc" rows="3" placeholder="What you’re playing, links…"></textarea>
-        </label>
-        <div class="yt-row">
-          <label>Privacy
-            <select name="privacy" id="ytPrivacy">
-              <option value="unlisted" selected>Unlisted</option>
-              <option value="public">Public</option>
-              <option value="private">Private</option>
-            </select>
-          </label>
-          <label>Feed
-            <select name="lane" id="ytLane">
-              <option value="main" selected>Main (16:9)</option>
-              <option value="vertical">Vertical (9:16)</option>
-            </select>
-          </label>
+
+      <div class="row-actions yt-form-actions" id="lmSessionBar" style="margin-bottom:0.75rem">
+        <button id="lmCreateBtn" type="button">Create stream</button>
+        <button id="lmStartBtn" type="button" class="ghost" disabled>Start stream</button>
+        <button id="lmEndBtn" type="button" class="ghost" disabled>End stream</button>
+        <span class="lm-status" id="lmSessionPill" title="Status indicator (not a button)">Idle</span>
+      </div>
+      <p class="hint" id="lmSessionHint">Status: Idle — Create when titles/thumbnail are ready.</p>
+
+      <details class="lm-media-block" id="lmMediaBlock">
+        <summary>Media Manager — starting soon / BRB / end</summary>
+        <p class="hint">Upload loop videos (MP4, ≤120MB). After Start: starting-soon until first OBS. If OBS drops: BRB idle video. Timers then play end credits and complete the stream.</p>
+        <div class="lm-media-grid">
+          <div class="lm-media-card">
+            <div class="title-line">Start media <span class="muted">starting soon</span></div>
+            <p class="meta" id="lmMediaStartMeta">Not uploaded</p>
+            <input type="file" id="lmMediaStartFile" accept="video/mp4,video/webm,video/*" hidden />
+            <div class="row-actions">
+              <button type="button" class="ghost" id="lmMediaStartUpload">Upload</button>
+              <button type="button" class="ghost" id="lmMediaStartClear" disabled>Remove</button>
+            </div>
+          </div>
+          <div class="lm-media-card">
+            <div class="title-line">Idle media <span class="muted">be right back</span></div>
+            <p class="meta" id="lmMediaIdleMeta">Not uploaded</p>
+            <input type="file" id="lmMediaIdleFile" accept="video/mp4,video/webm,video/*" hidden />
+            <div class="row-actions">
+              <button type="button" class="ghost" id="lmMediaIdleUpload">Upload</button>
+              <button type="button" class="ghost" id="lmMediaIdleClear" disabled>Remove</button>
+            </div>
+          </div>
+          <div class="lm-media-card">
+            <div class="title-line">End media <span class="muted">ending soon</span></div>
+            <p class="meta" id="lmMediaEndMeta">Not uploaded</p>
+            <input type="file" id="lmMediaEndFile" accept="video/mp4,video/webm,video/*" hidden />
+            <div class="row-actions">
+              <button type="button" class="ghost" id="lmMediaEndUpload">Upload</button>
+              <button type="button" class="ghost" id="lmMediaEndClear" disabled>Remove</button>
+            </div>
+          </div>
         </div>
-        <label>Thumbnail (optional)
-          <input type="file" id="ytThumb" accept="image/jpeg,image/png,image/webp" />
-        </label>
-        <label class="check">
-          <input type="checkbox" id="ytEnable" checked />
-          Enable destination and push key to relay
-        </label>
-        <button id="ytCreateBtn" type="submit">Create YouTube live</button>
-        <p class="hint" id="ytCreateHint">Creates a Control Room broadcast, binds RTMP, writes the stream key into Destinations.</p>
+        <div class="lm-timers" id="lmTimersView">
+          <div class="title-line">Timers <button type="button" class="ghost" id="lmTimersEditBtn" title="Edit timers">✎</button></div>
+          <p class="meta" id="lmTimersSummary">Start wait 3000s · BRB 1800s · End play 20s</p>
+          <div id="lmTimersEdit" class="dest-form" hidden>
+            <p class="hint">All values in <strong>seconds</strong> (e.g. 20 min = 1200, 50 min = 3000).</p>
+            <div class="yt-row">
+              <label>Wait for first OBS (seconds)
+                <input type="number" id="lmTimerStartSec" min="5" max="36000" step="1" />
+              </label>
+              <label>BRB / idle after disconnect (seconds)
+                <input type="number" id="lmTimerBrbSec" min="5" max="36000" step="1" />
+              </label>
+              <label>End video play (seconds)
+                <input type="number" id="lmTimerEndSec" min="5" max="36000" step="1" />
+              </label>
+            </div>
+            <div class="row-actions">
+              <button type="button" id="lmTimersSaveBtn">Save timers</button>
+              <button type="button" class="ghost" id="lmTimersCancelBtn">Cancel</button>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <form id="lmForm" class="dest-form yt-form">
+        <div id="lmAioFields" class="lm-block">
+          <label>Title
+            <input id="lmTitle" maxlength="100" placeholder="Stream title (all platforms)" />
+          </label>
+          <label>Description <span class="muted">(YouTube; skipped on Twitch/Kick)</span>
+            <textarea id="lmDesc" rows="2" placeholder="Description…"></textarea>
+          </label>
+          <label>Game / topic
+            <input id="lmGame" maxlength="80" placeholder="e.g. Valorant" autocomplete="off" />
+          </label>
+          <div class="yt-row">
+            <label>YouTube privacy
+              <select id="lmPrivacy">
+                <option value="unlisted" selected>Unlisted</option>
+                <option value="public">Public</option>
+                <option value="private">Private</option>
+              </select>
+            </label>
+            <label>YouTube latency
+              <select id="lmLatency">
+                <option value="normal" selected>Normal</option>
+                <option value="low">Low</option>
+                <option value="ultraLow">Ultra-low</option>
+              </select>
+            </label>
+          </div>
+          <label>YouTube category
+            <select id="lmCategory">
+              <option value="">Auto / none</option>
+              <option value="20">Gaming</option>
+            </select>
+          </label>
+          <p class="hint">YouTube: <strong>one live video</strong> — main 16:9 + Shorts <strong>Encoder</strong> 9:16 (same Control Room). After Create, enable Dual stream → Encoder in Studio and pick the Omnix vertical key. Point OBS / Aitum at both ingest keys.</p>
+          <p class="hint" id="lmYtDualHint" hidden></p>
+          <label>YouTube thumbnail <span class="muted">(JPEG/PNG · Edit preset → choose file → Save preset)</span>
+            <input type="file" id="lmYtThumb" accept="image/jpeg,image/jpg,image/png" />
+          </label>
+          <img id="lmYtThumbPreview" alt="" hidden style="max-width:180px;max-height:100px;border-radius:6px;margin-top:6px;object-fit:cover" />
+          <p class="hint" id="lmYtThumbNote">No thumbnail saved yet</p>
+        </div>
+
+        <div id="lmCustomFields" class="lm-block" hidden>
+          <h3 class="yt-subhead">YouTube</h3>
+          <label>Title <input id="lmYtTitle" maxlength="100" /></label>
+          <label>Description <textarea id="lmYtDesc" rows="2"></textarea></label>
+          <div class="yt-row">
+            <label>Privacy
+              <select id="lmYtPrivacy">
+                <option value="unlisted" selected>Unlisted</option>
+                <option value="public">Public</option>
+                <option value="private">Private</option>
+              </select>
+            </label>
+            <label>Latency
+              <select id="lmYtLatency">
+                <option value="normal" selected>Normal</option>
+                <option value="low">Low</option>
+                <option value="ultraLow">Ultra-low</option>
+              </select>
+            </label>
+          </div>
+          <label>Game <input id="lmYtGame" maxlength="80" /></label>
+          <label>Thumbnail <span class="muted">(JPEG/PNG · Edit → choose → Save preset)</span>
+            <input type="file" id="lmYtThumbCustom" accept="image/jpeg,image/jpg,image/png" />
+          </label>
+          <p class="hint" id="lmYtThumbNoteCustom"></p>
+          <h3 class="yt-subhead">Twitch</h3>
+          <label>Title <input id="lmTwTitle" maxlength="140" /></label>
+          <label>Game <input id="lmTwGame" maxlength="80" placeholder="Twitch category name" /></label>
+          <h3 class="yt-subhead">Kick</h3>
+          <label>Title <input id="lmKickTitle" maxlength="140" /></label>
+        </div>
+
+        <div class="row-actions yt-form-actions">
+          <button id="lmApplyBtn" type="button" class="ghost">Update titles</button>
+          <button id="lmSaveBtn" type="button" class="ghost">Save preset</button>
+        </div>
+        <p class="hint" id="lmHint">Update titles refreshes Twitch/Kick (and reuses YouTube). Only <strong>Create stream</strong> opens new Control Room lives.</p>
       </form>
+
+      <div class="yt-presets-block">
+        <h3 class="yt-subhead">Saved presets</h3>
+        <div id="lmPresetsList"><p class="empty">No presets yet.</p></div>
+      </div>
+
+      <details class="lm-yt-lives">
+        <summary>YouTube Control Room lives</summary>
+        <div class="row-actions" style="margin-top:0.5rem">
+          <button id="ytRefreshLivesBtn" type="button" class="ghost">Refresh lives</button>
+        </div>
+        <div id="ytLivesList"><p class="empty">Connect Google via Omnix Link, then refresh.</p></div>
+      </details>
     </section>
 
     <section class="grid bottom">
       <div class="panel">
         <h2>Destinations</h2>
-        <p class="hint">Leave <strong>On</strong> — stop/start OBS only. Kick ≤ 8000 kbps. Prefer YouTube manager above instead of pasting keys by hand.</p>
+        <p class="hint" id="destHint">Leave destinations <strong>On</strong> after Start. Titles come from Live Manager — use <strong>Edit</strong> only for Server URL / stream key. Twitch/Kick keys usually stay forever; YouTube keys refresh on Create.</p>
+        <div id="destConnectedStrip" class="dest-strip" hidden></div>
         <div id="targets"><p class="empty">No destinations yet.</p></div>
         <details>
           <summary>Add destination</summary>
           <div class="row-actions" id="presets">
             <button type="button" class="ghost" data-preset="custom">Custom</button>
-            <button type="button" class="ghost" data-preset="youtube">YouTube</button>
-            <button type="button" class="ghost" data-preset="twitch">Twitch</button>
-            <button type="button" class="ghost" data-preset="kick">Kick</button>
+            <button type="button" class="ghost" id="destAutoAddBtn">Add automatically</button>
+            <button type="button" class="ghost" data-preset="youtube">YouTube (manual)</button>
+            <button type="button" class="ghost" data-preset="twitch">Twitch (manual)</button>
+            <button type="button" class="ghost" data-preset="kick">Kick (manual)</button>
           </div>
           <form id="targetForm" class="dest-form">
+            <p class="hint" id="destEditHint" hidden>Editing existing destination — leave stream key empty to keep the current key.</p>
             <label>Name
               <input name="label" id="destLabel" placeholder="e.g. YouTube, Kick EU…" required autocomplete="off" />
             </label>
@@ -195,7 +351,10 @@
             <label>Stream key
               <input name="streamKey" id="destKey" placeholder="paste from platform" autocomplete="off" />
             </label>
-            <button type="submit">Save</button>
+            <div class="row-actions">
+              <button type="submit" id="destSaveBtn">Save</button>
+              <button type="button" class="ghost" id="destEditCancel" hidden>Cancel edit</button>
+            </div>
           </form>
         </details>
       </div>
@@ -229,6 +388,13 @@
     </section>
   </div>
 
+  <div id="lmBusyOverlay" class="busy-overlay" hidden>
+    <div class="busy-card" role="status" aria-live="polite">
+      <p class="busy-title">Preparing live…</p>
+      <p class="busy-sub">Please wait — creating YouTube Control Room and stream keys. This can take a bit.</p>
+    </div>
+  </div>
+
   <div id="deleteModal" class="modal" hidden>
     <div class="modal-card" role="dialog" aria-labelledby="deleteTitle">
       <div class="modal-top">
@@ -243,6 +409,51 @@
         <div class="modal-actions">
           <button id="deleteCancel" type="button" class="ghost">Cancel</button>
           <button id="deleteConfirmBtn" type="button" class="danger" disabled>Delete</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="lmConfirmModal" class="modal" hidden>
+    <div class="modal-card" role="dialog" aria-labelledby="lmConfirmTitle">
+      <div class="modal-top">
+        <h2 id="lmConfirmTitle">Are you sure?</h2>
+        <button id="lmConfirmClose" type="button" class="ghost" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <p id="lmConfirmBody">Confirm this action.</p>
+        <div class="modal-actions">
+          <button id="lmConfirmCancel" type="button" class="ghost">Cancel</button>
+          <button id="lmConfirmOk" type="button">Confirm</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="ytEncoderModal" class="modal" hidden>
+    <div class="modal-card" role="dialog" aria-labelledby="ytEncoderTitle">
+      <div class="modal-top">
+        <h2 id="ytEncoderTitle">Paste vertical stream key</h2>
+        <button id="ytEncoderClose" type="button" class="ghost" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <p id="ytEncoderLead">Main is ready. Omnix still needs the <strong>vertical / Shorts Encoder</strong> stream key from YouTube Studio.</p>
+        <ol id="ytEncoderSteps">
+          <li>Click <strong>Open YouTube Studio</strong> (your live / Control Room).</li>
+          <li>Stream → Dual stream <strong>On</strong> → vertical → <strong>Encoder</strong>.</li>
+          <li>Copy the vertical stream key (or create one), then paste it below.</li>
+          <li>Click <strong>Confirm</strong>, then <strong>Start stream</strong>.</li>
+        </ol>
+        <div class="row-actions" style="margin:0.75rem 0">
+          <a id="ytEncoderStudioBtn" class="btn" href="https://studio.youtube.com/livestreaming" target="_blank" rel="noopener">Open YouTube Studio</a>
+        </div>
+        <label>Vertical stream key
+          <input id="ytEncoderKeyInput" autocomplete="off" placeholder="paste vertical / Encoder stream key here" />
+        </label>
+        <p id="ytEncoderHint" class="hint muted">Server URL stays <code>rtmp://a.rtmp.youtube.com/live2</code> unless Studio shows something else.</p>
+        <div class="modal-actions">
+          <button id="ytEncoderDone" type="button" class="ghost">Skip for now</button>
+          <button id="ytEncoderSaveKey" type="button">Confirm</button>
         </div>
       </div>
     </div>
@@ -281,7 +492,7 @@
     </div>
   </div>
 
-  <script type="module" src="/app.js?v=20261029link2"></script>
+  <script type="module" src="/app.js?v=20261031destedit1"></script>
   <script>
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/sw.js").catch(() => {});

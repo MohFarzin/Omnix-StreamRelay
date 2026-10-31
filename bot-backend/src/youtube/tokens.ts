@@ -19,7 +19,6 @@ export function youtubeOAuthConfigured(): boolean {
   return Boolean(config.youtube.clientId && config.youtube.clientSecret);
 }
 
-/** Prefer local/direct so account tokens stay on this egg — broker is opt-in only. */
 export function youtubeConnectMode(): "broker" | "direct" | "none" {
   if (config.youtube.clientId && config.youtube.clientSecret) return "direct";
   if (config.oauthBrokerUrl && config.oauthBrokerSecret) return "broker";
@@ -60,7 +59,16 @@ export function saveYoutubeTokens(bundle: {
   expiresIn?: number;
 }): void {
   setSetting(K_ACCESS, encrypt(bundle.accessToken));
-  const exp = Date.now() + Math.max(60, Number(bundle.expiresIn ?? 3600) - 60) * 1000;
+
+  let expiresInSec = Number(bundle.expiresIn ?? 3600);
+  if (!Number.isFinite(expiresInSec) || expiresInSec <= 0) expiresInSec = 3600;
+  if (expiresInSec > 86_400) {
+
+    if (expiresInSec > 1_000_000 && expiresInSec < 10_000_000) expiresInSec = Math.floor(expiresInSec / 1000);
+    else expiresInSec = 3600;
+  }
+  expiresInSec = Math.min(7200, Math.max(60, expiresInSec));
+  const exp = Date.now() + (expiresInSec - 60) * 1000;
   setSetting(K_EXP, String(exp));
   if (bundle.refreshToken) setSetting(K_REFRESH, encrypt(bundle.refreshToken));
 }
@@ -94,4 +102,15 @@ export function getLiveChatId(): string {
 
 export function youtubeConnected(): boolean {
   return Boolean(getStoredRefreshToken() || getStoredAccessToken()?.token);
+}
+
+export function youtubeNeedsReconnect(): boolean {
+  if (!getStoredRefreshToken() && !getStoredAccessToken()?.token) return false;
+  const cached = getStoredAccessToken();
+  const accessOk = Boolean(cached?.token && cached.expiresAt > Date.now() + 30_000);
+  if (accessOk) return false;
+
+  if (config.oauthBrokerUrl && config.oauthBrokerSecret) return false;
+  if (config.youtube.clientId && config.youtube.clientSecret) return false;
+  return true;
 }

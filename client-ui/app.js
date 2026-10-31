@@ -19,14 +19,13 @@ function toast(msg) {
 async function copyText(text) {
   const value = String(text || "");
   if (!value) throw new Error("nothing to copy");
-  // clipboard API needs HTTPS; we are on http:// — always have a fallback
+
   try {
     if (navigator.clipboard && window.isSecureContext) {
       await navigator.clipboard.writeText(value);
       return;
     }
   } catch {
-    /* fall through */
   }
   const ta = document.createElement("textarea");
   ta.value = value;
@@ -43,7 +42,7 @@ async function copyText(text) {
 async function api(path, opts = {}) {
   const headers = { ...(opts.headers || {}) };
   if (state.accessToken) headers.Authorization = `Bearer ${state.accessToken}`;
-  // Only set JSON content-type when we actually send a body (Fastify rejects empty JSON body)
+
   const hasBody = opts.body !== undefined && opts.body !== null;
   if (hasBody && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json";
@@ -58,7 +57,8 @@ async function api(path, opts = {}) {
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || err.message || res.statusText);
+    const msg = err.error || err.message || res.statusText || `HTTP ${res.status}`;
+    throw new Error(typeof msg === "string" && msg !== "{}" ? msg : `Request failed (${res.status})`);
   }
   if (res.status === 204) return null;
   const text = await res.text();
@@ -99,7 +99,6 @@ function connectWs() {
     try {
       state.ws.close();
     } catch {
-      /* ignore */
     }
   }
   const proto = location.protocol === "https:" ? "wss" : "ws";
@@ -111,23 +110,43 @@ function connectWs() {
   ws.addEventListener("message", (ev) => {
     const msg = JSON.parse(ev.data);
     if (msg.type === "chat") appendChat(msg);
-    if (msg.type === "ingest") {
-      const b = $("ingestBadge");
-      const chats = Array.isArray(msg.chatPlatforms) && msg.chatPlatforms.length
-        ? ` · chat:${msg.chatPlatforms.join("+")}`
-        : " · chat:off";
-      const main = msg.live ? `LIVE · ${msg.path}` : `idle · ${msg.path}`;
-      const vert = msg.vertical
-        ? msg.vertical.live
-          ? ` · V:LIVE`
-          : ` · V:idle`
-        : "";
-      b.textContent = main + vert + chats;
-      b.classList.toggle("live", Boolean(msg.live || msg.vertical?.live));
-      if (msg.chat) renderChatStatus(msg.chat);
+    if (msg.type === "hub") {
+      applyIngestMsg(msg.ingest || {});
+      if (Array.isArray(msg.targets) && !state.busy) {
+        for (const t of msg.targets) upsertTargetRow(t);
+      }
+      if (msg.session && msg.session.type === "session") {
+        window.__lmSession = msg.session.session;
+        window.__lmRuntime = msg.session.runtime;
+        renderSession(msg.session.session, msg.session.runtime, msg.session.media);
+      }
+      return;
     }
+    if (msg.type === "ingest") applyIngestMsg(msg);
     if (msg.type === "target" && !state.busy) upsertTargetRow(msg);
+    if (msg.type === "session") {
+      window.__lmSession = msg.session;
+      window.__lmRuntime = msg.runtime;
+      renderSession(msg.session, msg.runtime, msg.media);
+    }
   });
+}
+
+function applyIngestMsg(msg) {
+  const b = $("ingestBadge");
+  if (!b || !msg) return;
+  const chats = Array.isArray(msg.chatPlatforms) && msg.chatPlatforms.length
+    ? ` · chat:${msg.chatPlatforms.join("+")}`
+    : " · chat:off";
+  const main = msg.live ? `LIVE · ${msg.path}` : `idle · ${msg.path || ""}`;
+  const vert = msg.vertical
+    ? msg.vertical.live
+      ? ` · V:LIVE`
+      : ` · V:idle`
+    : "";
+  b.textContent = main + vert + chats;
+  b.classList.toggle("live", Boolean(msg.live || msg.vertical?.live));
+  if (msg.chat) renderChatStatus(msg.chat);
 }
 
 function appendChat(msg) {
@@ -168,7 +187,7 @@ async function toggleTarget(id, currentlyEnabled) {
   state.busy = true;
   try {
     const path = currentlyEnabled ? "disable" : "enable";
-    // send {} so Content-Type json is valid for Fastify
+
     await api(`/api/v1/targets/${encodeURIComponent(id)}/${path}`, {
       method: "POST",
       body: "{}",
@@ -184,7 +203,130 @@ async function toggleTarget(id, currentlyEnabled) {
 
 function displayDestName(label, lane) {
   const base = label || "dest";
+  if (/shorts encoder/i.test(base)) return base;
   return lane === "vertical" ? `${base} · vertical` : `${base} · main`;
+}
+
+function setCreateBusy(on) {
+  const overlay = $("lmBusyOverlay");
+  if (overlay) overlay.hidden = !on;
+  const createBtn = $("lmCreateBtn");
+  const startBtn = $("lmStartBtn");
+  if (on) {
+    if (createBtn) createBtn.disabled = true;
+    if (startBtn) startBtn.disabled = true;
+  }
+}
+
+function youtubeStudioUrl(broadcastId) {
+  if (!broadcastId) return "";
+  return `https://studio.youtube.com/video/${encodeURIComponent(broadcastId)}/livestreaming`;
+}
+
+function closeYtEncoderModal() {
+  const modal = $("ytEncoderModal");
+  if (modal) modal.hidden = true;
+  const inp = $("ytEncoderKeyInput");
+  if (inp) inp.value = "";
+  window.__ytEncoderNeedKey = false;
+}
+
+function openYtEncoderModal(opts = {}) {
+  const session = opts.session || window.__lmSession || {};
+  const id = session?.youtubeMainId || session?.youtubeVerticalId;
+  const studio =
+    String(opts.studioUrl || "").trim() ||
+    youtubeStudioUrl(id) ||
+    "https://studio.youtube.com/livestreaming";
+  const needKey = Boolean(opts.verticalKeyMissing || opts.requireKey);
+  window.__ytEncoderNeedKey = needKey;
+
+  const modal = $("ytEncoderModal");
+  if (!modal) return;
+  const title = $("ytEncoderTitle");
+  const lead = $("ytEncoderLead");
+  if (title) title.textContent = needKey ? "Paste vertical stream key" : "YouTube Shorts encoder";
+  if (lead) {
+    lead.innerHTML = needKey
+      ? "Main is ready. Omnix still needs the <strong>vertical / Shorts Encoder</strong> stream key from YouTube Studio."
+      : "One YouTube video — main is automatic. For Shorts, open Studio → Dual stream → Encoder.";
+  }
+  const link = $("ytEncoderStudioBtn");
+  if (link) {
+    link.href = studio;
+    link.textContent = id ? "Open your live in Studio" : "Open YouTube Studio";
+  }
+  const inp = $("ytEncoderKeyInput");
+  if (inp) {
+    inp.value = "";
+    inp.placeholder = needKey
+      ? "paste vertical / Encoder stream key here"
+      : "optional — paste only if Studio key differs";
+    inp.required = needKey;
+  }
+  const skip = $("ytEncoderDone");
+  if (skip) skip.textContent = needKey ? "Skip for now" : "Done";
+  const confirmBtn = $("ytEncoderSaveKey");
+  if (confirmBtn) confirmBtn.textContent = "Confirm";
+  modal.hidden = false;
+  if (needKey && inp) setTimeout(() => inp.focus(), 50);
+}
+
+async function saveYtEncoderKeyFromModal() {
+  const key = String($("ytEncoderKeyInput")?.value || "").trim();
+  if (!key) {
+    toast("Paste the vertical stream key from YouTube Studio, then Confirm");
+    $("ytEncoderKeyInput")?.focus();
+    return;
+  }
+
+  let streamKey = key;
+  let rtmpUrl = "rtmp://a.rtmp.youtube.com/live2";
+  if (/^rtmps?:\/\//i.test(key)) {
+    try {
+      const u = new URL(key.replace(/^rtmps:/i, "https:").replace(/^rtmp:/i, "http:"));
+      const parts = u.pathname.replace(/^\//, "").split("/").filter(Boolean);
+      streamKey = parts.pop() || key;
+      rtmpUrl = key.replace(/\/[^/]+\/?$/, "").replace(/\/$/, "");
+      if (!/^rtmps?:\/\//i.test(rtmpUrl)) rtmpUrl = "rtmp://a.rtmp.youtube.com/live2";
+    } catch {
+    }
+  }
+  try {
+    const list = await api("/api/v1/targets");
+    const existing = (list || []).find((t) => t.id === "youtube-v") || {};
+    await api("/api/v1/targets/youtube-v", {
+      method: "PUT",
+      body: JSON.stringify({
+        label: existing.label || "YouTube · Shorts encoder",
+        platform: "youtube",
+        lane: "vertical",
+        rtmpUrl: existing.rtmpUrl || rtmpUrl,
+        streamKey,
+        enabled: true,
+      }),
+    });
+    toast("Vertical key saved — you can Start stream now");
+    closeYtEncoderModal();
+    await loadTargets();
+    await loadLiveSession();
+  } catch (e) {
+    toast(`Confirm failed: ${e.message}`);
+  }
+}
+
+function renderYtDualHint(session) {
+  const el = $("lmYtDualHint");
+  if (!el) return;
+  const id = session?.youtubeMainId || session?.youtubeVerticalId;
+  if (!id || (session?.status !== "prepared" && session?.status !== "live")) {
+    el.hidden = true;
+    el.innerHTML = "";
+    return;
+  }
+  const studio = youtubeStudioUrl(id);
+  el.hidden = false;
+  el.innerHTML = `Same YouTube video for main + Shorts. Open <a href="${escapeHtml(studio)}" target="_blank" rel="noopener">Studio Control Room</a> → Stream → Dual stream <strong>On</strong> → vertical <strong>Encoder</strong> → select <strong>Omnix vertical encoder</strong> → then Start here.`;
 }
 
 function upsertTargetRow(t) {
@@ -226,6 +368,7 @@ function upsertTargetRow(t) {
         <button type="button" class="tog tog-off" data-want="0">Off</button>
         <button type="button" class="tog tog-on" data-want="1">On</button>
       </div>
+      <button type="button" class="ghost tiny" data-edit-dest="${escapeHtml(t.id)}">Edit</button>
       <button type="button" class="ghost tiny" data-del-dest="${escapeHtml(t.id)}">Delete</button>
     </div>
   `;
@@ -239,6 +382,14 @@ function upsertTargetRow(t) {
       void toggleTarget(t.id, isOn);
     };
   });
+  const edit = row.querySelector("[data-edit-dest]");
+  if (edit) {
+    edit.onclick = (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      openEditDestination(t);
+    };
+  }
   const del = row.querySelector("[data-del-dest]");
   if (del) {
     del.onclick = (ev) => {
@@ -253,7 +404,8 @@ async function loadTargets() {
   const list = await api("/api/v1/targets");
   $("targets").innerHTML = "";
   if (!list.length) {
-    $("targets").innerHTML = `<p class="empty">No targets yet — add one below.</p>`;
+    $("targets").innerHTML = `<p class="empty">No destinations yet — Connect on Omnix Link, then Add automatically.</p>`;
+    void updateDestStrip();
     return;
   }
   for (const t of list) {
@@ -265,6 +417,7 @@ async function loadTargets() {
       enabled: t.enabled,
     });
   }
+  void updateDestStrip();
 }
 
 async function deleteCommand(name) {
@@ -330,12 +483,12 @@ function renderChatStatus(chat) {
   }
   if (chat.connected?.length) {
     box.innerHTML = `<span class="ok">Connected: ${escapeHtml(chat.connected.join(", "))}</span>`;
-    // Working → keep compact so video controls stay primary
+
     setChatExpanded(false);
     return;
   }
   box.innerHTML = `<strong>Chat off</strong> — video still works. Tap <em>?</em> for setup.`;
-  // Not configured → open so status is obvious
+
   setChatExpanded(true);
 }
 
@@ -423,8 +576,572 @@ async function loadYoutubeStatus() {
         $("kickStatus").textContent = ch ? `Connected · ${ch} · paste key in Destinations` : "Connected · paste Kick URL+key once";
       }
     }
+
+    void loadLivePresets();
+    void updateDestStrip();
   } catch (e) {
     if ($("ytStatus")) $("ytStatus").textContent = `Status failed: ${e.message}`;
+  }
+}
+
+window.__lmMode = "aio";
+
+function setLmMode(mode) {
+  window.__lmMode = mode === "custom" ? "custom" : "aio";
+  $("lmModeAio")?.classList.toggle("on", window.__lmMode === "aio");
+  $("lmModeCustom")?.classList.toggle("on", window.__lmMode === "custom");
+  if ($("lmAioFields")) $("lmAioFields").hidden = window.__lmMode !== "aio";
+  if ($("lmCustomFields")) $("lmCustomFields").hidden = window.__lmMode !== "custom";
+}
+
+function readLmDraft() {
+  if (window.__lmMode === "custom") {
+    return {
+      mode: "custom",
+      custom: {
+        youtube: {
+          title: $("lmYtTitle")?.value || "",
+          description: $("lmYtDesc")?.value || "",
+          privacy: $("lmYtPrivacy")?.value || "unlisted",
+          latency: $("lmYtLatency")?.value || "normal",
+          game: $("lmYtGame")?.value || "",
+        },
+        twitch: {
+          title: $("lmTwTitle")?.value || "",
+          game: $("lmTwGame")?.value || "",
+        },
+        kick: {
+          title: $("lmKickTitle")?.value || "",
+        },
+      },
+    };
+  }
+  return {
+    mode: "aio",
+    aio: {
+      title: $("lmTitle")?.value || "",
+      description: $("lmDesc")?.value || "",
+      game: $("lmGame")?.value || "",
+      privacy: $("lmPrivacy")?.value || "unlisted",
+      latency: $("lmLatency")?.value || "normal",
+      categoryId: $("lmCategory")?.value || "",
+    },
+  };
+}
+
+function fmtThumbMb(bytes) {
+  const n = Number(bytes) || 0;
+  if (n <= 0) return "0 MB";
+  const mb = n / (1024 * 1024);
+  return mb >= 0.1 ? `${mb.toFixed(2)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
+}
+
+function setLmThumbNote(text) {
+  if ($("lmYtThumbNote")) $("lmYtThumbNote").textContent = text || "No thumbnail saved yet";
+  if ($("lmYtThumbNoteCustom")) $("lmYtThumbNoteCustom").textContent = text || "";
+}
+
+async function readYtThumbnailFromFile() {
+  const file = $("lmYtThumb")?.files?.[0] || $("lmYtThumbCustom")?.files?.[0];
+  if (!file) return {};
+  if (file.size > 2_000_000) throw new Error("thumbnail must be under 2MB");
+  let thumbnailMime = (file.type || "image/jpeg").toLowerCase();
+  if (thumbnailMime === "image/jpg") thumbnailMime = "image/jpeg";
+  if (thumbnailMime !== "image/jpeg" && thumbnailMime !== "image/png") {
+    throw new Error("thumbnail must be JPEG or PNG (YouTube rejects WebP)");
+  }
+  const thumbnailBase64 = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("thumbnail read failed"));
+    reader.readAsDataURL(file);
+  });
+  return {
+    thumbnailBase64,
+    thumbnailMime,
+    thumbnailName: file.name || "thumbnail.jpg",
+    thumbnailBytes: file.size,
+  };
+}
+
+async function readYtThumbnail() {
+  const fromFile = await readYtThumbnailFromFile();
+  if (fromFile.thumbnailBase64) {
+    window.__lmPresetThumb = fromFile;
+    showLmThumbPreview(fromFile.thumbnailBase64, {
+      name: fromFile.thumbnailName,
+      bytes: fromFile.thumbnailBytes,
+      pending: true,
+    });
+    return fromFile;
+  }
+  if (window.__lmPresetThumb?.thumbnailBase64) return window.__lmPresetThumb;
+  return {};
+}
+
+function showLmThumbPreview(dataUrl, meta) {
+  const img = $("lmYtThumbPreview");
+  if (img && dataUrl) {
+    img.src = dataUrl;
+    img.hidden = false;
+  } else if (img && !dataUrl) {
+    img.removeAttribute("src");
+    img.hidden = true;
+  }
+  if (!meta?.name && !dataUrl) {
+    setLmThumbNote("No thumbnail saved yet");
+    return;
+  }
+  const name = meta?.name || "thumbnail";
+  const size = fmtThumbMb(meta?.bytes);
+  if (meta?.pending) {
+    setLmThumbNote(`New file: ${name} · ${size} — click Save preset to store it`);
+  } else {
+    setLmThumbNote(`Saved: ${name} · ${size}`);
+  }
+}
+
+async function loadPresetThumbnail(presetId) {
+  if (!presetId) {
+    window.__lmPresetThumb = null;
+    showLmThumbPreview("", null);
+    return;
+  }
+  try {
+    const thumb = await api(`/api/v1/live/presets/${encodeURIComponent(presetId)}/thumbnail`);
+    if (thumb?.thumbnailBase64) {
+      window.__lmPresetThumb = {
+        thumbnailBase64: thumb.thumbnailBase64,
+        thumbnailMime: thumb.thumbnailMime || "image/jpeg",
+        thumbnailName: thumb.thumbnailName || "thumbnail.jpg",
+        thumbnailBytes: thumb.thumbnailBytes || 0,
+      };
+      showLmThumbPreview(thumb.thumbnailBase64, {
+        name: thumb.thumbnailName || "thumbnail.jpg",
+        bytes: thumb.thumbnailBytes || 0,
+        pending: false,
+      });
+      return;
+    }
+  } catch {
+  }
+  window.__lmPresetThumb = null;
+  showLmThumbPreview("", null);
+}
+
+function fmtMs(ms) {
+  if (ms == null || ms < 0) return "";
+  const s = Math.ceil(ms / 1000);
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  if (m >= 60) return `${Math.floor(m / 60)}h ${m % 60}m`;
+  return `${m}:${String(r).padStart(2, "0")}`;
+}
+
+function renderSession(session, runtime, media) {
+  const s = session || { status: "idle" };
+  const rt = runtime || { phase: s.status || "idle", label: s.status || "Idle", detail: "", remainingMs: null };
+  const pill = $("lmSessionPill");
+  const hint = $("lmSessionHint");
+  const createBtn = $("lmCreateBtn");
+  const startBtn = $("lmStartBtn");
+  const endBtn = $("lmEndBtn");
+  const phase = rt.phase || s.status || "idle";
+  const remain = rt.remainingMs != null ? ` · ${fmtMs(rt.remainingMs)}` : "";
+  if (pill) {
+    pill.textContent = `${rt.label || phase}${remain}`;
+    pill.className = `lm-status phase-${phase}`;
+  }
+
+  const watches = [...new Set([s.watchMain, s.watchVertical].filter(Boolean))];
+  if (hint) {
+    const watchHtml = watches.length
+      ? ` · ${watches.map((u) => `<a href="${escapeHtml(u)}" target="_blank" rel="noopener">${escapeHtml(u)}</a>`).join(" · ")}`
+      : "";
+    hint.innerHTML = `${escapeHtml(rt.detail || rt.label || phase)}${watchHtml}`;
+  }
+  renderYtDualHint(s);
+  if (createBtn) createBtn.disabled = phase !== "idle" && phase !== "prepared";
+  if (startBtn) startBtn.disabled = phase !== "prepared";
+  if (endBtn) endBtn.disabled = phase === "idle";
+  if (media) renderMediaManager(media);
+  window.__lmPhase = phase;
+
+  if (window.__lmPoll) {
+    clearInterval(window.__lmPoll);
+    window.__lmPoll = null;
+  }
+}
+
+function renderMediaManager(media) {
+  const files = media?.files || {};
+  const timers = media?.timers || {};
+  const clearIds = { start: "lmMediaStartClear", idle: "lmMediaIdleClear", end: "lmMediaEndClear" };
+  const metaIds = { start: "lmMediaStartMeta", idle: "lmMediaIdleMeta", end: "lmMediaEndMeta" };
+  for (const slot of ["start", "idle", "end"]) {
+    const el = $(metaIds[slot]);
+    const clearBtn = $(clearIds[slot]);
+    const f = files[slot];
+    if (!el) continue;
+    if (f?.present) {
+      el.textContent = `Ready · ${Math.round((f.bytes || 0) / 1024)} KB`;
+      if (clearBtn) clearBtn.disabled = false;
+    } else {
+      el.textContent = "Not uploaded";
+      if (clearBtn) clearBtn.disabled = true;
+    }
+  }
+  const sum = $("lmTimersSummary");
+  if (sum && timers) {
+    const ss = Math.round((timers.startWaitMs || 0) / 1000);
+    const bs = Math.round((timers.brbWaitMs || 0) / 1000);
+    const es = Math.round((timers.endPlayMs || 0) / 1000);
+    sum.textContent = `Start wait ${ss}s · BRB ${bs}s · End play ${es}s`;
+  }
+  window.__lmTimers = timers;
+}
+
+function confirmLmAction(title, body) {
+  return new Promise((resolve) => {
+    const modal = $("lmConfirmModal");
+    if (!modal) {
+      resolve(window.confirm(`${title}\n\n${body}`));
+      return;
+    }
+    $("lmConfirmTitle").textContent = title;
+    $("lmConfirmBody").textContent = body;
+    modal.hidden = false;
+    const done = (ok) => {
+      modal.hidden = true;
+      $("lmConfirmOk").onclick = null;
+      $("lmConfirmCancel").onclick = null;
+      $("lmConfirmClose").onclick = null;
+      resolve(ok);
+    };
+    $("lmConfirmOk").onclick = () => done(true);
+    $("lmConfirmCancel").onclick = () => done(false);
+    $("lmConfirmClose").onclick = () => done(false);
+  });
+}
+
+async function loadLiveSession() {
+  if (window.__lmSessionInflight) return window.__lmSessionInflight;
+  window.__lmSessionInflight = (async () => {
+    try {
+      const res = await api("/api/v1/live/session");
+      window.__lmSession = res.session;
+      window.__lmRuntime = res.runtime;
+      renderSession(res.session, res.runtime, res.media);
+    } catch {
+      renderSession({ status: "idle" }, { phase: "idle", label: "Idle", detail: "" });
+    } finally {
+      window.__lmSessionInflight = null;
+    }
+  })();
+  return window.__lmSessionInflight;
+}
+
+async function uploadMediaSlot(slot, fileInputId) {
+  const input = $(fileInputId);
+  input?.click();
+  if (!input) return;
+  input.onchange = async () => {
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file) return;
+    if (file.size > 120 * 1024 * 1024) {
+      toast("Media must be under 120MB");
+      return;
+    }
+    try {
+      toast(`Uploading ${slot} media…`);
+      const buf = await file.arrayBuffer();
+      const r = await fetch(`/api/v1/live/media/${slot}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${state.accessToken}`,
+          "Content-Type": file.type || "video/mp4",
+        },
+        body: buf,
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || `upload ${r.status}`);
+      toast(`${slot} media saved`);
+      renderMediaManager(j.files ? j : { files: j.files, timers: j.timers });
+      await loadLiveSession();
+    } catch (e) {
+      toast(e.message || "upload failed");
+    }
+  };
+}
+
+function applyLmPreset(p) {
+  if (!p) return;
+  setLmMode(p.mode === "custom" ? "custom" : "aio");
+  if (p.mode === "custom") {
+    const y = p.custom?.youtube || {};
+    const tw = p.custom?.twitch || {};
+    const k = p.custom?.kick || {};
+    if ($("lmYtTitle")) $("lmYtTitle").value = y.title || "";
+    if ($("lmYtDesc")) $("lmYtDesc").value = y.description || "";
+    if ($("lmYtPrivacy") && y.privacy) $("lmYtPrivacy").value = y.privacy;
+    if ($("lmYtLatency") && y.latency) $("lmYtLatency").value = y.latency;
+    if ($("lmYtGame")) $("lmYtGame").value = y.game || "";
+    if ($("lmTwTitle")) $("lmTwTitle").value = tw.title || "";
+    if ($("lmTwGame")) $("lmTwGame").value = tw.game || "";
+    if ($("lmKickTitle")) $("lmKickTitle").value = k.title || "";
+  } else {
+    const a = p.aio || {};
+    if ($("lmTitle")) $("lmTitle").value = a.title || "";
+    if ($("lmDesc")) $("lmDesc").value = a.description || "";
+    if ($("lmGame")) $("lmGame").value = a.game || "";
+    if ($("lmPrivacy") && a.privacy) $("lmPrivacy").value = a.privacy;
+    if ($("lmLatency") && a.latency) $("lmLatency").value = a.latency;
+    if ($("lmCategory") && a.categoryId != null) $("lmCategory").value = a.categoryId || "";
+  }
+  void loadPresetThumbnail(p.id);
+}
+
+async function loadLiveCategories() {
+  const sel = $("lmCategory");
+  if (!sel) return;
+  try {
+    const res = await api("/api/v1/youtube/categories?region=US");
+    const cats = res.categories || [];
+    const current = sel.value;
+    sel.innerHTML = `<option value="">Auto / none</option>`;
+    for (const c of cats) {
+      const opt = document.createElement("option");
+      opt.value = c.id;
+      opt.textContent = c.title;
+      sel.appendChild(opt);
+    }
+    if (current && [...sel.options].some((o) => o.value === current)) sel.value = current;
+    else if ([...sel.options].some((o) => o.value === "20")) sel.value = "20";
+  } catch {
+  }
+}
+
+async function loadLivePresets() {
+  const box = $("lmPresetsList");
+  if (!box) return;
+  try {
+    const res = await api("/api/v1/live/presets");
+    const presets = res.presets || [];
+    const defaultId = res.defaultId || "";
+    window.__lmPresets = presets;
+    window.__lmDefaultId = defaultId;
+    if (!presets.length) {
+      box.innerHTML = `<p class="empty">No presets yet — fill the form and Save preset.</p>`;
+      return;
+    }
+
+    const def = defaultId ? presets.find((x) => x.id === defaultId) : null;
+    if (def?.hasThumbnail) {
+      setLmThumbNote(`Saved: ${def.thumbnailName || "thumbnail"} · ${fmtThumbMb(def.thumbnailBytes)}`);
+    } else if (def) {
+      setLmThumbNote("No thumbnail saved yet");
+    }
+
+    if (def && !window.__lmEditingId && !window.__lmDefaultLoaded) {
+      applyLmPreset(def);
+      window.__lmDefaultLoaded = true;
+      toast(def.hasThumbnail ? "Default preset + thumbnail loaded" : "Default preset loaded");
+    } else if (def?.hasThumbnail && !window.__lmEditingId) {
+      void loadPresetThumbnail(def.id);
+    }
+    box.innerHTML = presets
+      .map((p) => {
+        const isDef = p.id === defaultId;
+        const mode = escapeHtml(p.mode || "aio");
+        const title =
+          p.mode === "custom"
+            ? escapeHtml(p.custom?.youtube?.title || p.custom?.twitch?.title || p.custom?.kick?.title || "")
+            : escapeHtml(p.aio?.title || "");
+        const thumbPill = p.hasThumbnail
+          ? `<span class="pill">thumb · ${escapeHtml(p.thumbnailName || "image")} · ${fmtThumbMb(p.thumbnailBytes)}</span>`
+          : `<span class="pill">no thumb</span>`;
+        return `<div class="yt-preset-card lm-preset-card">
+          <div class="title-line">${escapeHtml(p.name || "Preset")} ${isDef ? `<span class="pill default">default</span>` : ""} <span class="pill">${mode}</span> ${thumbPill}</div>
+          <div class="meta">${title || "(no title)"}</div>
+          <div class="row-actions">
+            <button type="button" class="ghost lm-edit" data-id="${escapeHtml(p.id)}">Edit</button>
+            <button type="button" class="ghost lm-apply" data-id="${escapeHtml(p.id)}">Apply</button>
+            <button type="button" class="ghost lm-default" data-id="${escapeHtml(p.id)}" ${isDef ? "disabled" : ""}>Set default</button>
+            <button type="button" class="ghost lm-del" data-id="${escapeHtml(p.id)}">Delete</button>
+          </div>
+        </div>`;
+      })
+      .join("");
+    box.querySelectorAll(".lm-edit").forEach((btn) => {
+      btn.onclick = () => {
+        const p = presets.find((x) => x.id === btn.getAttribute("data-id"));
+        applyLmPreset(p);
+        window.__lmEditingId = p?.id || null;
+
+        if ($("lmYtThumb")) $("lmYtThumb").value = "";
+        if ($("lmYtThumbCustom")) $("lmYtThumbCustom").value = "";
+        toast(
+          p?.hasThumbnail
+            ? `Editing — current thumb: ${p.thumbnailName || "image"} (${fmtThumbMb(p.thumbnailBytes)}). Choose a new file, then Save preset.`
+            : "Editing — choose a thumbnail file, then Save preset"
+        );
+      };
+    });
+    box.querySelectorAll(".lm-apply").forEach((btn) => {
+      btn.onclick = async () => {
+        try {
+          const r = await api("/api/v1/live/apply", {
+            method: "POST",
+            body: JSON.stringify({ presetId: btn.getAttribute("data-id"), forceAll: true }),
+          });
+          toast(`Titles · ${summarizeApply(r)}`);
+          await loadTargets();
+          await loadLiveSession();
+        } catch (e) {
+          toast(e.message);
+        }
+      };
+    });
+    box.querySelectorAll(".lm-default").forEach((btn) => {
+      btn.onclick = async () => {
+        try {
+          await api(`/api/v1/live/presets/${encodeURIComponent(btn.getAttribute("data-id"))}/default`, {
+            method: "POST",
+            body: "{}",
+          });
+          toast("Default preset set");
+          await loadLivePresets();
+        } catch (e) {
+          toast(e.message);
+        }
+      };
+    });
+    box.querySelectorAll(".lm-del").forEach((btn) => {
+      btn.onclick = async () => {
+        try {
+          await api(`/api/v1/live/presets/${encodeURIComponent(btn.getAttribute("data-id"))}`, {
+            method: "DELETE",
+          });
+          toast("Preset deleted");
+          await loadLivePresets();
+        } catch (e) {
+          toast(e.message);
+        }
+      };
+    });
+  } catch (e) {
+    box.innerHTML = `<p class="empty">${escapeHtml(e.message || "Could not load presets")}</p>`;
+  }
+}
+
+function summarizeApply(r) {
+  const parts = Object.entries(r.results || {}).map(([k, v]) => `${k}:${v.ok ? "ok" : v.detail || "fail"}`);
+  return parts.length ? `Applied · ${parts.join(" · ")}` : "Nothing to apply (need titles + On destinations or force)";
+}
+
+async function updateDestStrip() {
+  const strip = $("destConnectedStrip");
+  if (!strip) return;
+  try {
+    const [oauth, yt, targets] = await Promise.all([
+      api("/api/v1/oauth/status").catch(() => null),
+      api("/api/v1/youtube/status").catch(() => null),
+      api("/api/v1/targets").catch(() => []),
+    ]);
+    const on = new Set((targets || []).filter((t) => t.enabled).map((t) => String(t.platform || "")));
+    const chips = [];
+    if (yt?.connected) chips.push({ id: "youtube", label: "YouTube", connected: true });
+    if (oauth?.twitch?.connected) chips.push({ id: "twitch", label: "Twitch", connected: true });
+    if (oauth?.kick?.connected) chips.push({ id: "kick", label: "Kick", connected: true });
+    if (!chips.length) {
+      strip.hidden = true;
+      strip.innerHTML = "";
+      return;
+    }
+    strip.hidden = false;
+    strip.innerHTML = chips
+      .map((c) => {
+        const isOn = on.has(c.id);
+        return `<span class="dest-chip ${isOn ? "on" : "off"}">${escapeHtml(c.label)} · ${isOn ? "On" : "Off"}</span>`;
+      })
+      .join("");
+  } catch {
+    strip.hidden = true;
+  }
+}
+
+async function loadYoutubeLives() {
+  const box = $("ytLivesList");
+  if (!box) return;
+  try {
+    const res = await api("/api/v1/youtube/live/list");
+    const lives = res.lives || [];
+    if (!lives.length) {
+      box.innerHTML = `<p class="empty">No upcoming or active lives — create one below.</p>`;
+      return;
+    }
+    box.innerHTML = lives
+      .map((live) => {
+        const status = escapeHtml(live.lifeCycleStatus || "unknown");
+        const privacy = escapeHtml(live.privacyStatus || live.privacy || "");
+        const title = escapeHtml(live.title || "(untitled)");
+        const id = escapeHtml(live.broadcastId);
+        const watch = escapeHtml(live.watchUrl || "");
+        return `<div class="yt-live-card" data-broadcast="${id}">
+          <div class="title-line">${title}</div>
+          <div class="meta">${status} · ${privacy}${watch ? ` · <a href="${watch}" target="_blank" rel="noopener">watch</a>` : ""}</div>
+          <div class="row-actions">
+            <button type="button" class="ghost yt-use-live" data-id="${id}">Use this live</button>
+            <button type="button" class="ghost yt-load-live" data-id="${id}">Load into form</button>
+          </div>
+        </div>`;
+      })
+      .join("");
+    box.querySelectorAll(".yt-use-live").forEach((btn) => {
+      btn.onclick = async () => {
+        try {
+          btn.disabled = true;
+          const resUse = await api("/api/v1/youtube/live/use", {
+            method: "POST",
+            body: JSON.stringify({
+              broadcastId: btn.getAttribute("data-id"),
+              lane: "main",
+              enable: true,
+            }),
+          });
+          toast(`Using live · ${resUse.targetId || "youtube"} — click Start stream`);
+          if (resUse.session) {
+            window.__lmSession = resUse.session;
+            renderSession(resUse.session);
+          } else {
+            await loadLiveSession();
+          }
+          if (resUse.watchUrl && $("lmHint")) {
+            $("lmHint").innerHTML = `Watch: <a href="${escapeHtml(resUse.watchUrl)}" target="_blank" rel="noopener">${escapeHtml(resUse.watchUrl)}</a>`;
+          }
+          await loadTargets();
+        } catch (e) {
+          toast(String(e.message || "").replace(/<[^>]+>/g, ""));
+        } finally {
+          btn.disabled = false;
+        }
+      };
+    });
+    box.querySelectorAll(".yt-load-live").forEach((btn) => {
+      btn.onclick = () => {
+        const card = lives.find((l) => l.broadcastId === btn.getAttribute("data-id"));
+        if (!card) return;
+        setLmMode("aio");
+        if ($("lmTitle")) $("lmTitle").value = card.title || "";
+        if ($("lmDesc")) $("lmDesc").value = card.description || "";
+        if ($("lmPrivacy") && card.privacyStatus) $("lmPrivacy").value = card.privacyStatus;
+        toast("Loaded into Live Manager");
+      };
+    });
+  } catch (e) {
+    const msg = String(e.message || "Could not load lives").replace(/<[^>]+>/g, "");
+    box.innerHTML = `<p class="empty">${escapeHtml(msg)}</p>`;
   }
 }
 
@@ -489,7 +1206,7 @@ async function startPlatformConnect(platform) {
       await startYoutubeDeviceConnect();
       return;
     } catch (e) {
-      // Web OAuth clients often lack device flow — fall back to local redirect popup
+
       toast(`Device Connect unavailable — trying browser… (${e.message})`);
     }
   }
@@ -502,23 +1219,105 @@ async function startPlatformConnect(platform) {
   toast("Finish sign-in in the popup — tokens stay on this server");
 }
 
+function setLinkPill(id, connected, needsReconnect) {
+  const el = $(id);
+  if (!el) return;
+  if (needsReconnect) {
+    el.textContent = "Reconnect";
+    el.classList.remove("ok");
+    el.classList.add("off");
+    return;
+  }
+  el.textContent = connected ? "Connected" : "Not connected";
+  el.classList.toggle("ok", Boolean(connected));
+  el.classList.toggle("off", !connected);
+}
+
+function showLinkViews({ linked, changing }) {
+  const connectedView = $("linkConnectedView");
+  const setupView = $("linkSetupView");
+  const cancelBtn = $("linkCancelChangeBtn");
+  if (connectedView) connectedView.hidden = !(linked && !changing);
+  if (setupView) setupView.hidden = !(!linked || changing);
+  if (cancelBtn) cancelBtn.hidden = !changing;
+}
+
 async function loadLinkStatus() {
   const statusEl = $("linkStatusLine");
-  if (!statusEl) return;
+  const setupStatus = $("linkSetupStatus");
+  const hint = $("linkHint");
   try {
     const s = await api("/api/v1/oauth/link/status");
-    statusEl.textContent = s.tunnelTokenSet
-      ? `Status: ${s.status || "…"} — ${s.message || ""}`
-      : "Status: not connected — paste Connect Relay token from Omnix Link";
+    const linked = Boolean(s.linked || s.status === "linked");
+    const changing = Boolean(window.__linkChangingToken);
+    showLinkViews({ linked, changing });
+
+    const statusText = linked
+      ? `Link: ${s.status || "linked"}${s.message ? ` — ${s.message}` : ""}`
+      : s.tunnelTokenSet
+        ? `Status: ${s.status || "…"} — ${s.message || "waiting for confirm on Omnix Link"}`
+        : "Not connected — paste Connect Relay token from Omnix Link";
+    if (statusEl) statusEl.textContent = statusText;
+    if (setupStatus) setupStatus.textContent = statusText;
+    if (hint) {
+      if (s.platforms?.youtube?.needsReconnect) {
+        hint.textContent =
+          "YouTube login expired — on Omnix Link: Disconnect YouTube, then Connect YouTube again. Then retry Create.";
+      } else if (linked) {
+        hint.textContent = "Relay is linked. Open Omnix Link to Connect / Remove YouTube, Twitch, or Kick.";
+      } else {
+        hint.textContent =
+          "Paste a Connect Relay token once, confirm on Omnix Link, then Connect platforms there.";
+      }
+    }
+    if ($("linkOpenBtn") && s.openUrl) $("linkOpenBtn").href = s.openUrl;
+
+    setLinkPill("linkYtPill", s.platforms?.youtube?.connected, s.platforms?.youtube?.needsReconnect);
+    setLinkPill("linkTwitchPill", s.platforms?.twitch?.connected);
+    setLinkPill("linkKickPill", s.platforms?.kick?.connected);
   } catch (e) {
-    statusEl.textContent = `Status: unavailable (${e.message})`;
+    showLinkViews({ linked: false, changing: false });
+    if (statusEl) statusEl.textContent = `Status: unavailable (${e.message})`;
+    if (setupStatus) setupStatus.textContent = `Status: unavailable (${e.message})`;
   }
 }
 
 async function enter() {
   showApp(true);
   connectWs();
-  await Promise.all([loadSetup(), loadTargets(), loadCommands(), loadYoutubeStatus(), loadLinkStatus()]);
+  for (const id of ["lmYtThumb", "lmYtThumbCustom"]) {
+    const el = $(id);
+    if (el && !el.__lmThumbBound) {
+      el.__lmThumbBound = true;
+      el.addEventListener("change", () => {
+        void readYtThumbnailFromFile()
+          .then((t) => {
+            if (!t.thumbnailBase64) return;
+            window.__lmPresetThumb = t;
+            showLmThumbPreview(t.thumbnailBase64, {
+              name: t.thumbnailName,
+              bytes: t.thumbnailBytes,
+              pending: true,
+            });
+            if (window.__lmEditingId) {
+              toast("New thumbnail selected — click Save preset to apply");
+            } else {
+              toast("Click Edit on a preset first, then Save preset to store this thumbnail");
+            }
+          })
+          .catch((e) => toast(e.message || "thumbnail failed"));
+      });
+    }
+  }
+  await Promise.all([
+    loadSetup(),
+    loadTargets(),
+    loadCommands(),
+    loadYoutubeStatus(),
+    loadLinkStatus(),
+    loadLiveSession(),
+    loadLivePresets(),
+  ]);
 }
 
 $("loginBtn").onclick = async () => {
@@ -556,7 +1355,6 @@ $("logoutBtn").onclick = () => {
   try {
     state.ws?.close();
   } catch {
-    /* ignore */
   }
   state.ws = null;
   showApp(false);
@@ -594,7 +1392,6 @@ if (helpBtn && helpModal) {
   });
 }
 
-// Event delegation for copy buttons (works even after setup reloads)
 document.addEventListener("click", (ev) => {
   const btn = ev.target.closest("[data-copy]");
   if (!btn) return;
@@ -618,7 +1415,7 @@ const PRESETS = {
     lane: "main",
     rtmpUrl: "rtmp://live.twitch.tv/app",
   },
-  // Kick ingest host is per-account — leave URL empty
+
   kick: { label: "Kick", lane: "main", rtmpUrl: "" },
 };
 
@@ -642,11 +1439,51 @@ function slugId(label, lane) {
   return base.slice(0, 32);
 }
 
+let editingDest = null;
+
 function clearDestForm(form) {
-  form.label.value = "";
-  form.lane.value = "main";
-  form.rtmpUrl.value = "";
+  const f = form || $("targetForm");
+  if (!f) return;
+  f.label.value = "";
+  f.lane.value = "main";
+  f.rtmpUrl.value = "";
+  f.streamKey.value = "";
+  f.streamKey.placeholder = "paste from platform";
+  editingDest = null;
+  const hint = $("destEditHint");
+  if (hint) hint.hidden = true;
+  const cancel = $("destEditCancel");
+  if (cancel) cancel.hidden = true;
+  const saveBtn = $("destSaveBtn");
+  if (saveBtn) saveBtn.textContent = "Save";
+}
+
+function openEditDestination(t) {
+  const form = $("targetForm");
+  if (!form || !t?.id) return;
+  const details = form.closest("details");
+  if (details) details.open = true;
+  editingDest = {
+    id: t.id,
+    platform: t.platform || guessPlatform(t.label || "", t.rtmpUrl || ""),
+    label: t.label || t.id,
+    lane: t.lane === "vertical" ? "vertical" : "main",
+    rtmpUrl: t.rtmpUrl || "",
+  };
+  form.label.value = editingDest.label;
+  form.lane.value = editingDest.lane;
+  form.rtmpUrl.value = editingDest.rtmpUrl;
   form.streamKey.value = "";
+  form.streamKey.placeholder = "leave empty to keep current key";
+  const hint = $("destEditHint");
+  if (hint) hint.hidden = false;
+  const cancel = $("destEditCancel");
+  if (cancel) cancel.hidden = false;
+  const saveBtn = $("destSaveBtn");
+  if (saveBtn) saveBtn.textContent = "Update";
+  form.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  form.streamKey.focus();
+  toast(`Editing ${displayDestName(editingDest.label, editingDest.lane)}`);
 }
 
 let deletePending = null;
@@ -695,6 +1532,7 @@ document.querySelectorAll("[data-preset]").forEach((btn) => {
     const key = btn.getAttribute("data-preset");
     const p = PRESETS[key];
     if (!p) return;
+    clearDestForm($("targetForm"));
     const form = $("targetForm");
     form.label.value = p.label;
     form.lane.value = p.lane || "main";
@@ -707,6 +1545,12 @@ document.querySelectorAll("[data-preset]").forEach((btn) => {
   });
 });
 
+$("destEditCancel") &&
+  ($("destEditCancel").onclick = () => {
+    clearDestForm($("targetForm"));
+    toast("Edit cancelled");
+  });
+
 $("targetForm").onsubmit = async (ev) => {
   ev.preventDefault();
   try {
@@ -717,15 +1561,24 @@ $("targetForm").onsubmit = async (ev) => {
     const streamKey = String(fd.get("streamKey") || "").trim();
     if (!label) throw new Error("Name is required");
     if (!rtmpUrl) throw new Error("Server URL is required");
-    if (!streamKey) throw new Error("Stream key is required for new / replace save");
-    const platform = guessPlatform(label, rtmpUrl);
-    const id = slugId(label, lane);
+    const isEdit = Boolean(editingDest?.id);
+    if (!isEdit && !streamKey) throw new Error("Stream key is required for new destinations");
+    const platform = isEdit
+      ? editingDest.platform || guessPlatform(label, rtmpUrl)
+      : guessPlatform(label, rtmpUrl);
+    const id = isEdit ? editingDest.id : slugId(label, lane);
+    const body = { label, platform, lane, rtmpUrl };
+    if (streamKey) body.streamKey = streamKey;
     await api(`/api/v1/targets/${encodeURIComponent(id)}`, {
       method: "PUT",
-      body: JSON.stringify({ label, platform, lane, rtmpUrl, streamKey }),
+      body: JSON.stringify(body),
     });
     clearDestForm(ev.target);
-    toast(`Saved ${displayDestName(label, lane)} — turn On while OBS is live`);
+    toast(
+      isEdit
+        ? `Updated ${displayDestName(label, lane)}${streamKey ? "" : " (key unchanged)"}`
+        : `Saved ${displayDestName(label, lane)} — turn On while OBS is live`
+    );
     await loadTargets();
   } catch (e) {
     toast(`Save failed: ${e.message}`);
@@ -856,70 +1709,356 @@ $("deviceFallback") &&
     }
   });
 
-$("linkSaveBtn") &&
-  ($("linkSaveBtn").onclick = async () => {
+$("linkShowToken") &&
+  ($("linkShowToken").onchange = () => {
+    const input = $("linkTunnelToken");
+    if (!input) return;
+    input.type = $("linkShowToken").checked ? "text" : "password";
+  });
+
+$("linkChangeBtn") &&
+  ($("linkChangeBtn").onclick = () => {
+    const ok = window.confirm(
+      "Replace Omnix Link token?\n\nOnly do this if you created a new token on Omnix Link. You will need to confirm the egg again."
+    );
+    if (!ok) return;
+    window.__linkChangingToken = true;
+    showLinkViews({ linked: true, changing: true });
+    if ($("linkTunnelToken")) {
+      $("linkTunnelToken").value = "";
+      $("linkTunnelToken").focus();
+    }
+  });
+
+$("linkUnlinkBtn") &&
+  ($("linkUnlinkBtn").onclick = async () => {
+    const ok = window.confirm(
+      "Unlink Omnix Link from this panel?\n\nYou can pair again anytime with a new Connect Relay token. Platform Connect stays on Omnix Link."
+    );
+    if (!ok) return;
     try {
-      const body = {
-        tunnelToken: $("linkTunnelToken")?.value || "",
-      };
-      const s = await api("/api/v1/oauth/link/config", {
-        method: "POST",
-        body: JSON.stringify(body),
-      });
+      await api("/api/v1/oauth/link/unlink", { method: "POST", body: "{}" });
+      window.__linkChangingToken = false;
       if ($("linkTunnelToken")) $("linkTunnelToken").value = "";
-      if ($("linkStatusLine")) {
-        $("linkStatusLine").textContent = `Status: ${s.status || "…"} — ${s.message || "saved"}`;
-      }
-      toast("Connecting — confirm this relay on Omnix Link");
+      toast("Omnix Link unlinked on this panel");
       await loadLinkStatus();
     } catch (e) {
       toast(e.message);
     }
   });
 
-$("ytLiveForm") &&
-  ($("ytLiveForm").onsubmit = async (ev) => {
+$("linkCancelChangeBtn") &&
+  ($("linkCancelChangeBtn").onclick = async () => {
+    window.__linkChangingToken = false;
+    await loadLinkStatus();
+  });
+
+$("linkOpenBtn") &&
+  ($("linkOpenBtn").onclick = (ev) => {
+
+    const href = $("linkOpenBtn").getAttribute("href") || "https://relaylink.omnixstudio.xyz/app";
+    window.open(href, "_blank", "noopener,noreferrer");
     ev.preventDefault();
-    const btn = $("ytCreateBtn");
+  });
+
+$("linkSaveBtn") &&
+  ($("linkSaveBtn").onclick = async () => {
+    try {
+      const token = ($("linkTunnelToken")?.value || "").trim();
+      if (!token) throw new Error("Paste the Connect Relay token first");
+      const s = await api("/api/v1/oauth/link/config", {
+        method: "POST",
+        body: JSON.stringify({ tunnelToken: token }),
+      });
+      if ($("linkTunnelToken")) $("linkTunnelToken").value = "";
+      window.__linkChangingToken = false;
+      toast("Connecting — confirm this relay on Omnix Link");
+      await loadLinkStatus();
+      if (s.status && s.status !== "linked") {
+        toast("Waiting for confirm on Omnix Link…");
+      }
+    } catch (e) {
+      toast(e.message);
+    }
+  });
+
+document.querySelector(".lm-yt-lives")?.addEventListener("toggle", (ev) => {
+  const el = ev.currentTarget;
+  if (el?.open) {
+    void loadYoutubeLives();
+    void loadLiveCategories();
+  }
+});
+
+$("ytRefreshLivesBtn") &&
+  ($("ytRefreshLivesBtn").onclick = async () => {
+    try {
+      await loadYoutubeLives();
+      toast("Lives refreshed");
+    } catch (e) {
+      toast(e.message);
+    }
+  });
+
+$("lmModeAio") && ($("lmModeAio").onclick = () => setLmMode("aio"));
+$("lmModeCustom") && ($("lmModeCustom").onclick = () => setLmMode("custom"));
+setLmMode("aio");
+
+$("lmSaveBtn") &&
+  ($("lmSaveBtn").onclick = async () => {
+    try {
+      const draft = readLmDraft();
+
+      const thumb = await readYtThumbnail();
+      const suggested =
+        draft.mode === "aio"
+          ? draft.aio?.title
+          : draft.custom?.youtube?.title || draft.custom?.twitch?.title || draft.custom?.kick?.title;
+      const existingName =
+        (window.__lmEditingId &&
+          (window.__lmPresets || []).find((x) => x.id === window.__lmEditingId)?.name) ||
+        (window.__lmDefaultId &&
+          (window.__lmPresets || []).find((x) => x.id === window.__lmDefaultId)?.name) ||
+        suggested ||
+        "My stream";
+      const name = window.prompt("Preset name (same name updates the existing preset)", String(existingName).slice(0, 40)) || "";
+      if (!name.trim()) return;
+
+      const payload = {
+        id: window.__lmEditingId || window.__lmDefaultId || undefined,
+        name: name.trim(),
+        ...draft,
+      };
+      const saved = await api("/api/v1/live/presets", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      const presetId = saved?.preset?.id || window.__lmEditingId || window.__lmDefaultId;
+      if (!presetId) throw new Error("Preset save failed — no id returned");
+      window.__lmEditingId = null;
+      window.__lmDefaultId = presetId;
+      window.__lmDefaultLoaded = true;
+
+      let thumbOk = Boolean(saved?.preset?.hasThumbnail);
+      if (thumb.thumbnailBase64) {
+        const tr = await api(`/api/v1/live/presets/${encodeURIComponent(presetId)}/thumbnail`, {
+          method: "PUT",
+          body: JSON.stringify({
+            thumbnailBase64: thumb.thumbnailBase64,
+            thumbnailMime: thumb.thumbnailMime,
+            thumbnailName: thumb.thumbnailName,
+          }),
+        });
+        thumbOk = true;
+        showLmThumbPreview(thumb.thumbnailBase64, {
+          name: tr.thumbnailName || thumb.thumbnailName,
+          bytes: tr.thumbnailBytes || thumb.thumbnailBytes,
+          pending: false,
+        });
+        toast(`Preset saved · thumb ${tr.thumbnailName || thumb.thumbnailName} (${fmtThumbMb(tr.thumbnailBytes || thumb.thumbnailBytes)})`);
+      } else if (thumbOk) {
+        toast(`Preset saved · thumb ${saved.preset.thumbnailName || "image"} (${fmtThumbMb(saved.preset.thumbnailBytes)})`);
+      } else {
+        toast("Preset saved — no thumbnail yet (choose a file, then Save again)");
+      }
+
+      if ($("lmYtThumb")) $("lmYtThumb").value = "";
+      if ($("lmYtThumbCustom")) $("lmYtThumbCustom").value = "";
+      await loadLivePresets();
+      await loadPresetThumbnail(presetId);
+    } catch (e) {
+      toast(e.message || "Save failed");
+    }
+  });
+
+$("lmApplyBtn") &&
+  ($("lmApplyBtn").onclick = async () => {
+    const btn = $("lmApplyBtn");
     if (btn) btn.disabled = true;
     try {
-      let thumbnailBase64 = "";
-      let thumbnailMime = "";
-      const file = $("ytThumb")?.files?.[0];
-      if (file) {
-        if (file.size > 2_000_000) throw new Error("thumbnail must be under 2MB");
-        thumbnailMime = file.type || "image/jpeg";
-        thumbnailBase64 = await new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(String(reader.result || ""));
-          reader.onerror = () => reject(new Error("thumbnail read failed"));
-          reader.readAsDataURL(file);
-        });
-      }
-      const body = {
-        title: $("ytTitle")?.value || "",
-        description: $("ytDesc")?.value || "",
-        privacy: $("ytPrivacy")?.value || "unlisted",
-        lane: $("ytLane")?.value || "main",
-        enable: Boolean($("ytEnable")?.checked),
-        thumbnailBase64: thumbnailBase64 || undefined,
-        thumbnailMime: thumbnailMime || undefined,
-      };
-      const res = await api("/api/v1/youtube/live/create", {
+      const draft = { ...readLmDraft(), ...(await readYtThumbnail()) };
+      const r = await api("/api/v1/live/apply", {
         method: "POST",
-        body: JSON.stringify(body),
+        body: JSON.stringify({ draft, forceAll: true }),
       });
-      toast(`YouTube live ready · ${res.targetId || "youtube"}`);
-      if (res.watchUrl) {
-        const hint = $("ytCreateHint");
-        if (hint) hint.innerHTML = `Watch: <a href="${escapeHtml(res.watchUrl)}" target="_blank" rel="noopener">${escapeHtml(res.watchUrl)}</a>`;
-      }
+      toast(`Titles · ${summarizeApply(r)}`);
+      if ($("lmHint")) $("lmHint").textContent = summarizeApply(r);
       await loadTargets();
-      await loadYoutubeStatus();
+      await loadLiveSession();
     } catch (e) {
-      toast(`Create failed: ${e.message}`);
+      toast(`Update failed: ${String(e.message || "").replace(/<[^>]+>/g, "")}`);
     } finally {
       if (btn) btn.disabled = false;
+    }
+  });
+
+$("lmCreateBtn") &&
+  ($("lmCreateBtn").onclick = async () => {
+    const ok = await confirmLmAction(
+      "Create stream?",
+      "Uses your default Live Manager preset and opens one YouTube Control Room live (main + Shorts Encoder keys). API quota applies. Continue?"
+    );
+    if (!ok) return;
+    setCreateBusy(true);
+    try {
+
+      if (window.__lmDefaultId && !String($("lmTitle")?.value || $("lmYtTitle")?.value || "").trim()) {
+        const def = (window.__lmPresets || []).find((x) => x.id === window.__lmDefaultId);
+        if (def) applyLmPreset(def);
+        await loadPresetThumbnail(window.__lmDefaultId);
+      }
+      const draft = { ...readLmDraft(), ...(await readYtThumbnail()) };
+      const presetId = window.__lmDefaultId || undefined;
+      const r = await api("/api/v1/live/session/create", {
+        method: "POST",
+        body: JSON.stringify({ draft, presetId }),
+      });
+      toast(`Created · ${summarizeApply(r)}`);
+      const ytDetail = r.results?.youtube?.detail || "";
+      if (/thumb:/i.test(ytDetail)) toast(`Thumbnail note: ${ytDetail}`);
+      window.__lmSession = r.session;
+      renderSession(r.session, r.runtime);
+      await loadTargets();
+      await loadYoutubeLives();
+
+      const targets = await api("/api/v1/targets").catch(() => []);
+      const vert = (targets || []).find((t) => t.id === "youtube-v");
+      const vertMissing =
+        r.verticalKeyMissing === true ||
+        Boolean(vert?.keyPending) ||
+        /not set|pending/i.test(String(vert?.keyMasked || ""));
+      if (vertMissing || r.session?.youtubeMainId || r.studioUrl) {
+        openYtEncoderModal({
+          session: r.session,
+          studioUrl: r.studioUrl,
+          verticalKeyMissing: vertMissing,
+          requireKey: vertMissing,
+        });
+      }
+    } catch (e) {
+      toast(`Create failed: ${String(e.message || "").replace(/<[^>]+>/g, "")}`);
+    } finally {
+      setCreateBusy(false);
+      await loadLiveSession();
+    }
+  });
+
+$("ytEncoderClose") && ($("ytEncoderClose").onclick = () => closeYtEncoderModal());
+$("ytEncoderDone") && ($("ytEncoderDone").onclick = () => closeYtEncoderModal());
+$("ytEncoderSaveKey") && ($("ytEncoderSaveKey").onclick = () => void saveYtEncoderKeyFromModal());
+$("ytEncoderModal") &&
+  $("ytEncoderModal").addEventListener("click", (ev) => {
+    if (ev.target === $("ytEncoderModal")) closeYtEncoderModal();
+  });
+
+$("lmStartBtn") &&
+  ($("lmStartBtn").onclick = async () => {
+    const ok = await confirmLmAction(
+      "Start stream?",
+      "Platforms go live. Starting-soon media loops until OBS connects. Timers auto-end if OBS never arrives."
+    );
+    if (!ok) return;
+    const btn = $("lmStartBtn");
+    if (btn) btn.disabled = true;
+    try {
+      const r = await api("/api/v1/live/session/start", { method: "POST", body: "{}" });
+      toast("Started — waiting for OBS / playing start media");
+      renderSession(r.session, r.runtime);
+      await loadTargets();
+    } catch (e) {
+      toast(`Start failed: ${e.message}`);
+      await loadLiveSession();
+    }
+  });
+
+$("lmEndBtn") &&
+  ($("lmEndBtn").onclick = async () => {
+    const ok = await confirmLmAction(
+      "End stream?",
+      "End credits video will play for the configured time (default 45s), then YouTube/destinations complete. Continue?"
+    );
+    if (!ok) return;
+    const btn = $("lmEndBtn");
+    if (btn) btn.disabled = true;
+    try {
+      const r = await api("/api/v1/live/session/end", { method: "POST", body: "{}" });
+      if (r.endingCredits) {
+        toast("Ending — playing end credits…");
+      } else {
+        toast("Stream ended");
+      }
+      renderSession(r.session, r.runtime);
+      await loadTargets();
+    } catch (e) {
+      toast(`End failed: ${e.message}`);
+      await loadLiveSession();
+    } finally {
+      await loadLiveSession();
+    }
+  });
+
+$("lmMediaStartUpload") && ($("lmMediaStartUpload").onclick = () => void uploadMediaSlot("start", "lmMediaStartFile"));
+$("lmMediaIdleUpload") && ($("lmMediaIdleUpload").onclick = () => void uploadMediaSlot("idle", "lmMediaIdleFile"));
+$("lmMediaEndUpload") && ($("lmMediaEndUpload").onclick = () => void uploadMediaSlot("end", "lmMediaEndFile"));
+
+async function clearMediaSlot(slot) {
+  try {
+    await api(`/api/v1/live/media/${slot}`, { method: "DELETE" });
+    toast(`${slot} media removed`);
+    await loadLiveSession();
+  } catch (e) {
+    toast(e.message);
+  }
+}
+$("lmMediaStartClear") && ($("lmMediaStartClear").onclick = () => void clearMediaSlot("start"));
+$("lmMediaIdleClear") && ($("lmMediaIdleClear").onclick = () => void clearMediaSlot("idle"));
+$("lmMediaEndClear") && ($("lmMediaEndClear").onclick = () => void clearMediaSlot("end"));
+
+$("lmTimersEditBtn") &&
+  ($("lmTimersEditBtn").onclick = () => {
+    const t = window.__lmTimers || {};
+    if ($("lmTimerStartSec")) $("lmTimerStartSec").value = String(Math.round((t.startWaitMs || 50 * 60000) / 1000));
+    if ($("lmTimerBrbSec")) $("lmTimerBrbSec").value = String(Math.round((t.brbWaitMs || 30 * 60000) / 1000));
+    if ($("lmTimerEndSec")) $("lmTimerEndSec").value = String(Math.round((t.endPlayMs || 20000) / 1000));
+    if ($("lmTimersEdit")) $("lmTimersEdit").hidden = false;
+  });
+$("lmTimersCancelBtn") &&
+  ($("lmTimersCancelBtn").onclick = () => {
+    if ($("lmTimersEdit")) $("lmTimersEdit").hidden = true;
+  });
+$("lmTimersSaveBtn") &&
+  ($("lmTimersSaveBtn").onclick = async () => {
+    try {
+      await api("/api/v1/live/media/timers", {
+        method: "PATCH",
+        body: JSON.stringify({
+          startWaitSec: Number($("lmTimerStartSec")?.value || 3000),
+          brbWaitSec: Number($("lmTimerBrbSec")?.value || 1800),
+          endPlaySec: Number($("lmTimerEndSec")?.value || 20),
+        }),
+      });
+      toast("Timers saved");
+      if ($("lmTimersEdit")) $("lmTimersEdit").hidden = true;
+      await loadLiveSession();
+    } catch (e) {
+      toast(e.message);
+    }
+  });
+
+$("destAutoAddBtn") &&
+  ($("destAutoAddBtn").onclick = async () => {
+    try {
+      const r = await api("/api/v1/live/destinations/auto-add", { method: "POST", body: "{}" });
+      const added = (r.added || []).join(", ") || "none";
+      const errs = Object.keys(r.errors || {}).length
+        ? ` · ${Object.entries(r.errors)
+            .map(([k, v]) => `${k}:${v}`)
+            .join("; ")}`
+        : "";
+      toast(`Auto-add · ${added}${errs}`);
+      await loadTargets();
+    } catch (e) {
+      toast(e.message);
     }
   });
 

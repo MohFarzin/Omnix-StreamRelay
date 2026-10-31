@@ -1,15 +1,18 @@
 import type { WebSocket } from "ws";
 import type { ChatMessage } from "./chat/types.js";
-import { onChat } from "./chat/engine.js";
+import { onChat, activePlatforms, chatDiagnostics } from "./chat/engine.js";
 import { processStatus } from "./relay/ffmpeg.js";
 import { ingestBoth } from "./relay/mediamtx.js";
 import { listTargets } from "./db.js";
 import { decrypt, maskKey } from "./crypto.js";
-import { activePlatforms, chatDiagnostics } from "./chat/engine.js";
 
 const clients = new Set<WebSocket>();
+const keyMaskCache = new Map<string, { enc: string; masked: string }>();
+let lastSessionFp = "";
+let tickN = 0;
 
 export function broadcast(obj: unknown): void {
+  if (!clients.size) return;
   const data = JSON.stringify(obj);
   for (const ws of clients) {
     if (ws.readyState === 1) ws.send(data);
@@ -35,43 +38,39 @@ function shortErr(err: string | null): string | null {
   return safe.length > 120 ? `${safe.slice(0, 117)}…` : safe;
 }
 
+function maskedKey(id: string, enc: string): string {
+  const hit = keyMaskCache.get(id);
+  if (hit && hit.enc === enc) return hit.masked;
+  let masked = "******";
+  try {
+    masked = maskKey(decrypt(enc));
+  } catch {
+  }
+  keyMaskCache.set(id, { enc, masked });
+  return masked;
+}
+
 export function startHub(): void {
   onChat((msg: ChatMessage) => broadcast({ type: "chat", ...msg }));
   let tickBusy = false;
+
   setInterval(() => {
-    if (tickBusy) return;
+    if (tickBusy || clients.size === 0) return;
     tickBusy = true;
+    tickN += 1;
     void (async () => {
       try {
         for (const ws of [...clients]) {
           if (ws.readyState !== 1) clients.delete(ws);
         }
+        if (!clients.size) return;
+
         const both = await ingestBoth();
-        broadcast({
-          type: "ingest",
-          live: both.main.live,
-          bytesIn: both.main.bytesIn,
-          path: both.main.path,
-          vertical: {
-            live: both.vertical.live,
-            bytesIn: both.vertical.bytesIn,
-            path: both.vertical.path,
-          },
-          chatPlatforms: activePlatforms(),
-          chat: chatDiagnostics(),
-        });
         const procs = processStatus();
-        for (const t of listTargets()) {
+        const targets = listTargets().map((t) => {
           const p = procs[t.id];
-          let keyMasked = "******";
-          try {
-            keyMasked = maskKey(decrypt(t.stream_key_enc));
-          } catch {
-            /* ignore */
-          }
           const err = p?.running ? null : shortErr(t.last_error);
-          broadcast({
-            type: "target",
+          return {
             id: t.id,
             label: t.label,
             platform: t.platform,
@@ -81,12 +80,51 @@ export function startHub(): void {
             error: err,
             uptimeSec: p?.uptimeSec ?? 0,
             outboundBytes: p?.outboundApprox ?? 0,
-            keyMasked,
-          });
+            keyMasked: maskedKey(t.id, t.stream_key_enc),
+          };
+        });
+
+        let sessionPayload: unknown = null;
+        try {
+          const { getLiveSession } = await import("./live/session.js");
+          const { peekRuntime } = await import("./live/runtime.js");
+          const { mediaStatus } = await import("./live/media.js");
+          const session = getLiveSession();
+          const runtime = peekRuntime();
+          const remainBucket = Math.floor((runtime.remainingMs ?? 0) / 1000);
+          const fp = `${runtime.phase}:${remainBucket}:${session.status}`;
+
+          const wantMedia = fp !== lastSessionFp || tickN % 6 === 0;
+          lastSessionFp = fp;
+          sessionPayload = {
+            type: "session",
+            session,
+            runtime,
+            media: wantMedia ? mediaStatus() : undefined,
+          };
+        } catch {
         }
+
+        broadcast({
+          type: "hub",
+          ingest: {
+            live: both.main.live,
+            bytesIn: both.main.bytesIn,
+            path: both.main.path,
+            vertical: {
+              live: both.vertical.live,
+              bytesIn: both.vertical.bytesIn,
+              path: both.vertical.path,
+            },
+            chatPlatforms: activePlatforms(),
+            chat: chatDiagnostics(),
+          },
+          targets,
+          session: sessionPayload,
+        });
       } finally {
         tickBusy = false;
       }
     })();
-  }, 1500);
+  }, 2500);
 }

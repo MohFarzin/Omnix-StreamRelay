@@ -20,7 +20,8 @@ async function main(): Promise<void> {
 
   const app = Fastify({
     logger: true,
-    bodyLimit: 3 * 1024 * 1024,
+
+    bodyLimit: 6 * 1024 * 1024,
     trustProxy: true,
   });
   const { registerSecurity } = await import("./security.js");
@@ -31,7 +32,7 @@ async function main(): Promise<void> {
   await app.register(fastifyStatic, {
     root: publicRoot,
     prefix: "/",
-    // Avoid stale dashboard JS/CSS after deploys (esp. browsers hitting Abu Dhabi)
+
     setHeaders(res, pathName) {
       if (/\.(html?|js|css)$/i.test(pathName)) {
         res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
@@ -41,7 +42,7 @@ async function main(): Promise<void> {
   });
   await registerRoutes(app);
 
-  app.get("/api/v1/ws", { websocket: true }, (socket, req) => {
+  app.get("/api/v1/ws", { websocket: true }, (socket, _req) => {
     let authed = false;
     const timer = setTimeout(() => {
       if (!authed) socket.close();
@@ -72,13 +73,11 @@ async function main(): Promise<void> {
           try {
             socket.send(JSON.stringify({ type: "auth", ok: false }));
           } catch {
-            /* ignore */
           }
           socket.close();
         }
       })();
     });
-    void req;
   });
 
   startHub();

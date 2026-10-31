@@ -13,7 +13,7 @@ export type StreamTarget = {
   enabled: number;
   last_error: string | null;
   updated_at: number;
-  /** main = 16:9 OBS path; vertical = 9:16 Aitum path */
+
   lane: "main" | "vertical";
 };
 
@@ -71,12 +71,10 @@ export function initDb(): void {
     );
   `);
 
-  // Migration: dual ingest lanes (main / vertical)
+
   try {
     db.exec(`ALTER TABLE stream_targets ADD COLUMN lane TEXT NOT NULL DEFAULT 'main'`);
-  } catch {
-    /* column already exists */
-  }
+  } catch {}
 
   const welcome = db.prepare("SELECT value FROM settings WHERE key = ?").get("welcome");
   if (!welcome) {

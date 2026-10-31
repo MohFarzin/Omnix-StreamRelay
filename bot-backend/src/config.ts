@@ -1,9 +1,3 @@
-function req(name: string): string {
-  const v = process.env[name];
-  if (!v) throw new Error(`Missing required env: ${name}`);
-  return v;
-}
-
 export const config = {
   port: Number(process.env.PORT ?? 8080),
   dataDir: process.env.DATA_DIR ?? "./data",
@@ -17,9 +11,9 @@ export const config = {
   mtxRtspBase: process.env.MTX_RTSP_BASE ?? "rtsp://127.0.0.1:8554",
   ingestPathPrefix: process.env.INGEST_PATH_PREFIX ?? "live",
   streamKey: process.env.STREAM_KEY ?? "mystream",
-  /** Second OBS/Aitum path for 9:16 — same RTMP port, different stream key. */
+
   streamKeyVertical: process.env.STREAM_KEY_VERTICAL ?? `${process.env.STREAM_KEY ?? "mystream"}_v`,
-  /** Public hostname for OBS / dashboard hints (no scheme). */
+
   publicHost: process.env.PUBLIC_HOST || process.env.SERVER_IP || "",
   rtmpPort: Number(process.env.RTMP_PORT ?? 1935),
   srtPort: Number(process.env.SRT_PORT ?? 8890),
@@ -46,10 +40,10 @@ export const config = {
     accessToken: process.env.KICK_ACCESS_TOKEN ?? "",
     channel: process.env.KICK_CHANNEL ?? "",
   },
-  /**
-   * OmnixStudio OAuth broker (Streamlabs-style Connect for public / multi-host).
-   * When set, Connect YouTube/Twitch/Kick goes through the broker — no egg Client ID fields.
-   */
+
+
+
+
   oauthBrokerUrl: (process.env.OAUTH_BROKER_URL ?? "").replace(/\/$/, ""),
   oauthBrokerSecret: process.env.OAUTH_BROKER_SECRET ?? "",
 };

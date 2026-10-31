@@ -98,14 +98,13 @@ export async function exchangeCode(code: string, state: string): Promise<void> {
   });
 }
 
-/** Ops-only fallback — not shown in normal Streamlabs-style UI. */
 export async function savePastedRefreshToken(refreshToken: string): Promise<void> {
   const token = refreshToken.trim();
   if (token.length < 20) {
     throw Object.assign(new Error("refresh token looks too short"), { statusCode: 400 });
   }
   if (!youtubeOAuthConfigured() || brokerConfigured()) {
-    // Allow paste only for direct mode
+
     if (!config.youtube.clientId || !config.youtube.clientSecret) {
       throw Object.assign(new Error("Paste-token fallback needs direct OAuth on this host"), {
         statusCode: 400,
@@ -125,40 +124,61 @@ export async function savePastedRefreshToken(refreshToken: string): Promise<void
   });
 }
 
-export async function getValidAccessToken(): Promise<string> {
+function reconnectHint(): string {
+  return "YouTube login expired — open Omnix Link → Disconnect YouTube → Connect YouTube again, then retry Create";
+}
+
+export async function getValidAccessToken(forceRefresh = false): Promise<string> {
   const cached = getStoredAccessToken();
-  if (cached?.token && cached.expiresAt > Date.now() + 30_000) return cached.token;
+  if (
+    !forceRefresh &&
+    cached?.token &&
+    cached.expiresAt > Date.now() + 30_000
+  ) {
+    return cached.token;
+  }
 
   const refresh = getStoredRefreshToken();
   if (!refresh) {
-    throw Object.assign(new Error("YouTube not connected — Connect Google first"), {
+    throw Object.assign(new Error("YouTube not connected — Connect Google on Omnix Link first"), {
       statusCode: 401,
     });
   }
 
-  if (brokerConfigured()) {
-    const json = await brokerRefresh("youtube", refresh);
-    saveYoutubeTokens({
-      accessToken: json.accessToken,
-      refreshToken: json.refreshToken,
-      expiresIn: json.expiresIn,
-    });
-    return json.accessToken;
-  }
+  try {
+    if (brokerConfigured()) {
+      const json = await brokerRefresh("youtube", refresh);
+      saveYoutubeTokens({
+        accessToken: json.accessToken,
+        refreshToken: json.refreshToken,
+        expiresIn: json.expiresIn,
+      });
+      return json.accessToken;
+    }
 
-  if (!config.youtube.clientId || !config.youtube.clientSecret) {
-    if (cached?.token) return cached.token;
-    throw Object.assign(new Error("YouTube Connect is unavailable on this build"), { statusCode: 503 });
+    if (!config.youtube.clientId || !config.youtube.clientSecret) {
+
+      throw Object.assign(new Error(reconnectHint()), { statusCode: 401 });
+    }
+
+    const json = await tokenRequest({
+      client_id: config.youtube.clientId,
+      client_secret: config.youtube.clientSecret,
+      refresh_token: refresh,
+      grant_type: "refresh_token",
+    });
+    saveYoutubeTokens({
+      accessToken: json.access_token,
+      expiresIn: json.expires_in,
+    });
+    return json.access_token;
+  } catch (e) {
+    const msg = String((e as Error).message || "");
+    if (/invalid_grant|invalid authentication|expired|revoked|reconnect/i.test(msg)) {
+      throw Object.assign(new Error(reconnectHint()), {
+        statusCode: (e as Error & { statusCode?: number }).statusCode ?? 401,
+      });
+    }
+    throw e;
   }
-  const json = await tokenRequest({
-    client_id: config.youtube.clientId,
-    client_secret: config.youtube.clientSecret,
-    refresh_token: refresh,
-    grant_type: "refresh_token",
-  });
-  saveYoutubeTokens({
-    accessToken: json.access_token,
-    expiresIn: json.expires_in,
-  });
-  return json.access_token;
 }
