@@ -968,7 +968,7 @@ export async function reconcile(): Promise<void> {
   if (fillerFileChanging || leavingIngestForFiller) {
     for (const id of [...procs.keys()]) {
       const t = getTarget(id);
-      if (kickHoldBrb && t && isKick(t)) continue;
+      // Remove special handling for Kick - all platforms should stop when switching to filler
       clearBackoff(id);
       stopTarget(id, { recycle: true });
     }
@@ -1027,8 +1027,9 @@ export async function reconcile(): Promise<void> {
       (wantIngest && stableNow[lane]);
     const kick = isKick(t);
 
-    if (kick && sessionForward && kickHoldBrb) continue;
-    if (kick && sessionForward && wantFiller === false && !wantIngest) continue;
+    // Remove special handling for Kick during BRB - all platforms should follow same rules
+    // if (kick && sessionForward && kickHoldBrb) continue;
+    // if (kick && sessionForward && wantFiller === false && !wantIngest) continue;
     const shouldRun = sessionForward && Boolean(t.enabled) && laneOk && ytReady;
     const sourceKey = wantFiller
       ? `filler:${runtimeSource.slot}`
@@ -1040,7 +1041,7 @@ export async function reconcile(): Promise<void> {
 
     if (running && st && st.sourceKey !== sourceKey) {
 
-      if (kick && kickHoldBrb) continue;
+      // Remove special handling for Kick - all platforms should stop when source key changes
       clearBackoff(t.id);
       stopTarget(t.id, { recycle: true });
       continue;
@@ -1079,10 +1080,8 @@ export async function reconcile(): Promise<void> {
       });
     }
     if (!shouldRun && running) {
-      if (kick && kickHoldBrb) {
-      } else {
-        stopTarget(t.id, { recycle: true });
-      }
+      // Remove special handling for Kick - all platforms should stop when not shouldRun
+      stopTarget(t.id, { recycle: true });
     }
 
     if (!sessionForward && yt && /key not ready/i.test(String(t.last_error || ""))) {

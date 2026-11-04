@@ -4,19 +4,19 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="color-scheme" content="dark" />
-  <meta name="theme-color" content="#0a0c10" />
+  <meta name="theme-color" content="#000000" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="Omnix Chat" />
   <title>Omnix StreamRelay</title>
   <link rel="manifest" href="/manifest.webmanifest" />
   <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="/styles.css?v=20261031destedit1" />
+  <link rel="stylesheet" href="/styles.css?v=20261031bw2" />
 </head>
 <body>
   <div id="login" class="panel login">
     <h1>Omnix StreamRelay</h1>
-    <p class="sub">Connect with the bootstrap token from <code>FIRST_LOGIN.txt</code>.</p>
+    <p class="sub">Bootstrap token from <code>FIRST_LOGIN.txt</code>.</p>
     <label>Bootstrap token
       <input id="bootstrap" type="password" autocomplete="current-password" />
     </label>
@@ -36,119 +36,9 @@
       </div>
     </header>
 
-    <section id="setup" class="panel setup">
-      <div class="setup-head">
-        <div>
-          <h2>Connection</h2>
-          <p class="sub" id="setupHost">Loading…</p>
-        </div>
-        <button id="toggleConnBtn" type="button" class="ghost" aria-expanded="false">Show details</button>
-      </div>
-      <div id="connDetails" class="setup-grid" hidden>
-        <p class="hint">Custom RTMP · leave auth <strong>OFF</strong> in OBS. Main = 16:9 · Vertical = Aitum 9:16.</p>
-        <div class="copy-row">
-          <span>Server</span>
-          <code id="obsServer">…</code>
-          <button type="button" class="ghost" data-copy="obsServer">Copy</button>
-        </div>
-        <div class="copy-row">
-          <span>Main key</span>
-          <code id="obsKey">…</code>
-          <button type="button" class="ghost" data-copy="obsKey">Copy</button>
-        </div>
-        <div class="copy-row">
-          <span>Vertical</span>
-          <code id="obsKeyV">…</code>
-          <button type="button" class="ghost" data-copy="obsKeyV">Copy</button>
-        </div>
-        <div class="copy-row">
-          <span>SRT main</span>
-          <code id="srtUrl">…</code>
-          <button type="button" class="ghost" data-copy="srtUrl">Copy</button>
-        </div>
-        <div class="copy-row">
-          <span>SRT vert</span>
-          <code id="srtUrlV">…</code>
-          <button type="button" class="ghost" data-copy="srtUrlV">Copy</button>
-        </div>
-        <div class="copy-row">
-          <span>Dashboard</span>
-          <code id="dashUrl">…</code>
-          <button type="button" class="ghost" data-copy="dashUrl">Copy</button>
-        </div>
-      </div>
-    </section>
-
-    <section id="chatPanel" class="panel chat-panel chat-hero chat-collapsed">
-      <div class="chat-head">
-        <div>
-          <h2>Live chat</h2>
-          <div id="chatStatus" class="hint">Checking…</div>
-        </div>
-        <div class="chat-head-actions">
-          <a class="ghost tiny linkish" href="/chat.html">Mobile view</a>
-          <button id="toggleChatBtn" type="button" class="ghost" aria-expanded="false">Expand</button>
-        </div>
-      </div>
-      <div id="chatBody" class="chat-body" hidden>
-        <div id="chatFilters" class="chat-filters" role="group" aria-label="Chat platforms">
-          <button type="button" class="chip on" data-chat-filter="all">All</button>
-          <button type="button" class="chip" data-chat-filter="twitch">Twitch</button>
-          <button type="button" class="chip" data-chat-filter="youtube">YouTube</button>
-          <button type="button" class="chip" data-chat-filter="kick">Kick</button>
-        </div>
-        <div id="chat" class="chat"><p class="empty">Waiting for chat…</p></div>
-        <form id="sendForm" class="send">
-          <input name="text" placeholder="Reply as bot…" autocomplete="off" />
-          <button type="submit">Send</button>
-        </form>
-      </div>
-    </section>
-
-    <section id="linkPanel" class="panel yt-panel">
-      <div class="setup-head">
-        <div>
-          <h2>Omnix Link</h2>
-          <p class="hint" id="linkHint">Paste a Connect Relay token once. Platforms are managed on Omnix Link.</p>
-        </div>
-      </div>
-
-      <div id="linkConnectedView" class="link-connected" hidden>
-        <p class="hint" id="linkStatusLine">Status: …</p>
-        <div class="link-plat-grid" id="linkPlatforms">
-          <div class="link-plat" data-plat="youtube"><span>YouTube</span><strong id="linkYtPill">…</strong></div>
-          <div class="link-plat" data-plat="twitch"><span>Twitch</span><strong id="linkTwitchPill">…</strong></div>
-          <div class="link-plat" data-plat="kick"><span>Kick</span><strong id="linkKickPill">…</strong></div>
-        </div>
-        <div class="row-actions link-actions">
-          <a id="linkOpenBtn" class="btn" href="https://relaylink.omnixstudio.xyz/app" target="_blank" rel="noopener">Open Omnix Link</a>
-          <button id="linkChangeBtn" type="button" class="ghost">Replace token</button>
-          <button id="linkUnlinkBtn" type="button" class="ghost danger-ghost">Unlink</button>
-        </div>
-      </div>
-
-      <div id="linkSetupView" class="link-setup" hidden>
-        <label class="field">
-          <span>Connect token</span>
-          <input id="linkTunnelToken" type="password" placeholder="paste token from Omnix Link → Connect Relay" autocomplete="off" spellcheck="false" />
-        </label>
-        <label class="check link-show-token">
-          <input type="checkbox" id="linkShowToken" />
-          Show token
-        </label>
-        <div class="row-actions">
-          <button id="linkSaveBtn" type="button">Save &amp; connect</button>
-          <button id="linkCancelChangeBtn" type="button" class="ghost" hidden>Cancel</button>
-        </div>
-        <p class="hint" id="linkSetupStatus">Not connected yet.</p>
-      </div>
-
-      <p class="hint" id="ytStatus" hidden></p>
-      <p class="hint" id="twitchStatus" hidden></p>
-      <p class="hint" id="kickStatus" hidden></p>
-    </section>
-
-    <section id="livePanel" class="panel yt-panel">
+    <div class="workspace">
+    <div class="stack-col">
+<section id="livePanel" class="panel yt-panel">
       <div class="setup-head">
         <div>
           <h2>Live Manager</h2>
@@ -160,13 +50,18 @@
         </div>
       </div>
 
-      <div class="row-actions yt-form-actions" id="lmSessionBar" style="margin-bottom:0.75rem">
-        <button id="lmCreateBtn" type="button">Create stream</button>
-        <button id="lmStartBtn" type="button" class="ghost" disabled>Start stream</button>
-        <button id="lmEndBtn" type="button" class="ghost" disabled>End stream</button>
-        <span class="lm-status" id="lmSessionPill" title="Status indicator (not a button)">Idle</span>
+      <div id="lmSessionBar" class="session-stage">
+        <div class="session-stage-status">
+          <span class="session-kicker">Session</span>
+          <span class="lm-status" id="lmSessionPill" title="Status indicator (not a button)">Idle</span>
+          <p class="hint" id="lmSessionHint">Idle — set title &amp; thumbnail, then Create.</p>
+        </div>
+        <div class="session-stage-actions">
+          <button id="lmCreateBtn" type="button" class="btn-stage">Create</button>
+          <button id="lmStartBtn" type="button" class="btn-stage ghost" disabled>Start</button>
+          <button id="lmEndBtn" type="button" class="btn-stage ghost" disabled>End</button>
+        </div>
       </div>
-      <p class="hint" id="lmSessionHint">Status: Idle — Create when titles/thumbnail are ready.</p>
 
       <details class="lm-media-block" id="lmMediaBlock">
         <summary>Media Manager — starting soon / BRB / end</summary>
@@ -319,7 +214,124 @@
       </details>
     </section>
 
-    <section class="grid bottom">
+        </div>
+    <div class="stack-col">
+<section id="setup" class="panel setup">
+      <div class="setup-head">
+        <div>
+          <h2>Connection</h2>
+          <p class="sub" id="setupHost">Loading…</p>
+        </div>
+        <button id="toggleConnBtn" type="button" class="ghost" aria-expanded="false">Show details</button>
+      </div>
+      <div id="connDetails" class="setup-grid" hidden>
+        <p class="hint">Custom RTMP · leave auth <strong>OFF</strong> in OBS. Main = 16:9 · Vertical = Aitum 9:16.</p>
+        <div class="copy-row">
+          <span>Server</span>
+          <code id="obsServer">…</code>
+          <button type="button" class="ghost" data-copy="obsServer">Copy</button>
+        </div>
+        <div class="copy-row">
+          <span>Main key</span>
+          <code id="obsKey">…</code>
+          <button type="button" class="ghost" data-copy="obsKey">Copy</button>
+        </div>
+        <div class="copy-row">
+          <span>Vertical</span>
+          <code id="obsKeyV">…</code>
+          <button type="button" class="ghost" data-copy="obsKeyV">Copy</button>
+        </div>
+        <div class="copy-row">
+          <span>SRT main</span>
+          <code id="srtUrl">…</code>
+          <button type="button" class="ghost" data-copy="srtUrl">Copy</button>
+        </div>
+        <div class="copy-row">
+          <span>SRT vert</span>
+          <code id="srtUrlV">…</code>
+          <button type="button" class="ghost" data-copy="srtUrlV">Copy</button>
+        </div>
+        <div class="copy-row">
+          <span>Dashboard</span>
+          <code id="dashUrl">…</code>
+          <button type="button" class="ghost" data-copy="dashUrl">Copy</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="chatPanel" class="panel chat-panel chat-hero chat-collapsed">
+      <div class="chat-head">
+        <div>
+          <h2>Live chat</h2>
+          <div id="chatStatus" class="hint">Checking…</div>
+        </div>
+        <div class="chat-head-actions">
+          <a class="ghost tiny linkish" href="/chat.html">Mobile view</a>
+          <button id="toggleChatBtn" type="button" class="ghost" aria-expanded="false">Expand</button>
+        </div>
+      </div>
+      <div id="chatBody" class="chat-body" hidden>
+        <div id="chatFilters" class="chat-filters" role="group" aria-label="Chat platforms">
+          <button type="button" class="chip on" data-chat-filter="all">All</button>
+          <button type="button" class="chip" data-chat-filter="twitch">Twitch</button>
+          <button type="button" class="chip" data-chat-filter="youtube">YouTube</button>
+          <button type="button" class="chip" data-chat-filter="kick">Kick</button>
+        </div>
+        <div id="chat" class="chat"><p class="empty">Waiting for chat…</p></div>
+        <form id="sendForm" class="send">
+          <input name="text" placeholder="Reply as bot…" autocomplete="off" />
+          <button type="submit">Send</button>
+        </form>
+      </div>
+    </section>
+
+    <section id="linkPanel" class="panel yt-panel">
+      <div class="setup-head">
+        <div>
+          <h2>Omnix Link</h2>
+          <p class="hint" id="linkHint">Paste a Connect Relay token once. Platforms are managed on Omnix Link.</p>
+        </div>
+      </div>
+
+      <div id="linkConnectedView" class="link-connected" hidden>
+        <p class="hint" id="linkStatusLine">Status: …</p>
+        <div class="link-plat-grid" id="linkPlatforms">
+          <div class="link-plat" data-plat="youtube"><span>YouTube</span><strong id="linkYtPill">…</strong></div>
+          <div class="link-plat" data-plat="twitch"><span>Twitch</span><strong id="linkTwitchPill">…</strong></div>
+          <div class="link-plat" data-plat="kick"><span>Kick</span><strong id="linkKickPill">…</strong></div>
+        </div>
+        <div class="row-actions link-actions">
+          <a id="linkOpenBtn" class="btn" href="https://relaylink.omnixstudio.xyz/app" target="_blank" rel="noopener">Open Omnix Link</a>
+          <button id="linkChangeBtn" type="button" class="ghost">Replace token</button>
+          <button id="linkUnlinkBtn" type="button" class="ghost danger-ghost">Unlink</button>
+        </div>
+      </div>
+
+      <div id="linkSetupView" class="link-setup" hidden>
+        <label class="field">
+          <span>Connect token</span>
+          <input id="linkTunnelToken" type="password" placeholder="paste token from Omnix Link → Connect Relay" autocomplete="off" spellcheck="false" />
+        </label>
+        <label class="check link-show-token">
+          <input type="checkbox" id="linkShowToken" />
+          Show token
+        </label>
+        <div class="row-actions">
+          <button id="linkSaveBtn" type="button">Save &amp; connect</button>
+          <button id="linkCancelChangeBtn" type="button" class="ghost" hidden>Cancel</button>
+        </div>
+        <p class="hint" id="linkSetupStatus">Not connected yet.</p>
+      </div>
+
+      <p class="hint" id="ytStatus" hidden></p>
+      <p class="hint" id="twitchStatus" hidden></p>
+      <p class="hint" id="kickStatus" hidden></p>
+    </section>
+
+        </div>
+    </div>
+
+<section class="grid bottom">
       <div class="panel">
         <h2>Destinations</h2>
         <p class="hint" id="destHint">Leave destinations <strong>On</strong> after Start. Titles come from Live Manager — use <strong>Edit</strong> only for Server URL / stream key. Twitch/Kick keys usually stay forever; YouTube keys refresh on Create.</p>
@@ -492,7 +504,8 @@
     </div>
   </div>
 
-  <script type="module" src="/app.js?v=20261031destedit1"></script>
+  <script src="/fx.js?v=20261031bw2"></script>
+  <script type="module" src="/app.js?v=20261031bw2"></script>
   <script>
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/sw.js").catch(() => {});
