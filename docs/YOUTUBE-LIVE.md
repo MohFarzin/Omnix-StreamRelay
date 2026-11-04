@@ -25,6 +25,18 @@ You never paste a Client ID, Client Secret, or API key into the egg.
 
 Set this before going live — YouTube locks it once the stream is running.
 
+### YouTube vertical (Dual / Shorts Encoder)
+
+Create / Start can set up the **main 16:9** broadcast and stream key. It will **not** automatically turn on Dual stream or fill the vertical Encoder key — YouTube’s Live API does not expose that.
+
+After Create:
+
+1. Open the live in **YouTube Studio**.
+2. Dual stream → vertical → **Encoder**.
+3. Paste that key into the panel when asked (or edit the `youtube-v` / vertical destination).
+
+Compose the 9:16 picture in OBS/Aitum; the relay only forwards `live/{STREAM_KEY_VERTICAL}`. See [VERTICAL-AITUM.md](VERTICAL-AITUM.md).
+
 ## Google “hasn’t verified this app” warning
 
 Omnix Link’s Google OAuth app is in **Testing** / unverified until Google finishes brand verification. That is normal for a small product.

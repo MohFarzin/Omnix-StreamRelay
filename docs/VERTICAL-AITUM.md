@@ -81,7 +81,9 @@ If vertical destinations stay idle, the relay is not receiving `mystream_v` yet 
 
 ## Encode tips
 
-Same as main for Twitch / Kick: **CBR**, keyframe interval **2**, Kick ≤ **8000** kbps. YouTube Shorts / vertical YouTube use a separate stream key in Studio (or a second live event); paste that into a **vertical** destination.
+Same as main for Twitch / Kick: **CBR**, keyframe interval **2**, Kick ≤ **8000** kbps.
+
+YouTube vertical: Live Manager / Create will **not** auto-enable Dual or fill the Shorts Encoder key (API limit). Turn Dual on in Studio → Encoder → paste into a **vertical** destination. The relay never crops 16:9 into 9:16 for you.
 
 ---
 

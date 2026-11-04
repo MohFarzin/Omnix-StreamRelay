@@ -7,7 +7,7 @@
 1. Install the egg / start Omnix.
 2. Open the dashboard → log in with `FIRST_LOGIN.txt`.
 3. Click **Connect Google / Twitch / Kick** → pick account → Allow (device code or browser — still local).
-4. **YouTube:** Create live (title, description, thumbnail) → key goes into Destinations automatically.
+4. **YouTube:** Create live (title, description, thumbnail) → **main** key goes into Destinations. Vertical / Dual Encoder is **not** API-automatic — enable Dual in YouTube Studio and paste the Encoder key into the vertical destination.
 5. **Twitch:** Connect usually also pulls the stream key into Destinations (`Twitch · main`). Turn **On** when OBS is live.
 6. **Kick:** Connect enables chat. Paste **Server URL + stream key once** from Kick Creator (Kick’s ingest host is per-account). Turn **On**.
 
