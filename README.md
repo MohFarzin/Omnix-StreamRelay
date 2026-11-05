@@ -8,6 +8,7 @@
 | **Deploy** | Pterodactyl / Jexactyl egg · Docker Compose |
 | **Image** | [`ghcr.io/mohfarzin/omnix-streamrelay:latest`](https://github.com/MohFarzin/Omnix-StreamRelay/pkgs/container/omnix-streamrelay) |
 | **Companion** | [Omnix Link](https://relaylink.omnixstudio.xyz) · [github.com/MohFarzin/Omnix-Link](https://github.com/MohFarzin/Omnix-Link) |
+| **Status** | **Beta** — core relay is usable; several areas are still under testing and active development |
 | **License** | [MIT](LICENSE) |
 | **Contact** | [admin@omnixstudio.xyz](mailto:admin@omnixstudio.xyz) |
 
@@ -35,30 +36,31 @@
 ## Table of contents
 
 1. [What this is](#what-this-is)
-2. [How it works](#how-it-works)
-3. [Features](#features)
-4. [Try it — panel egg](#try-it--panel-egg)
-5. [OBS and Aitum](#obs-and-aitum)
-6. [Destinations and Live Manager](#destinations-and-live-manager)
-7. [YouTube vertical / Dual Encoder](#youtube-vertical--dual-encoder)
-8. [Platform notes](#platform-notes)
-9. [Omnix Link](#omnix-link)
-10. [Chat (optional)](#chat-optional)
-11. [Mobile chat and desktop companion](#mobile-chat-and-desktop-companion)
-12. [Docker Compose](#docker-compose)
-13. [Egg variables](#egg-variables)
-14. [Encoding and transcode](#encoding-and-transcode)
-15. [Security and privacy](#security-and-privacy)
-16. [Container image and CI](#container-image-and-ci)
-17. [Repository layout](#repository-layout)
-18. [Documentation](#documentation)
-19. [Support and license](#support-and-license)
+2. [Beta — what is solid vs still moving](#beta--what-is-solid-vs-still-moving)
+3. [How it works](#how-it-works)
+4. [Features](#features)
+5. [Try it — panel egg](#try-it--panel-egg)
+6. [OBS and Aitum](#obs-and-aitum)
+7. [Destinations and Live Manager](#destinations-and-live-manager)
+8. [YouTube vertical / Dual Encoder](#youtube-vertical--dual-encoder)
+9. [Platform notes](#platform-notes)
+10. [Omnix Link](#omnix-link)
+11. [Chat (optional)](#chat-optional)
+12. [Mobile chat and desktop companion](#mobile-chat-and-desktop-companion)
+13. [Docker Compose](#docker-compose)
+14. [Egg variables](#egg-variables)
+15. [Encoding and transcode](#encoding-and-transcode)
+16. [Security and privacy](#security-and-privacy)
+17. [Container image and CI](#container-image-and-ci)
+18. [Repository layout](#repository-layout)
+19. [Documentation](#documentation)
+20. [Support and license](#support-and-license)
 
 ---
 
 ## What this is
 
-Omnix StreamRelay is a **self-hosted multistream relay**. Your gaming PC (or encoder) publishes **one** (or two) streams to a Linux node you control. That node:
+Omnix StreamRelay is a **self-hosted multistream relay** in **beta**. Your gaming PC (or encoder) publishes **one** (or two) streams to a Linux node you control. That node:
 
 - Accepts ingest via **RTMP** and **SRT** (MediaMTX)
 - Relays to each enabled destination with **FFmpeg** (default: zero-transcode copy)
@@ -67,7 +69,26 @@ Omnix StreamRelay is a **self-hosted multistream relay**. Your gaming PC (or enc
 
 It is **not** a SaaS restream account. There is no shared login across friends: **one operator per egg / server**. If a friend needs StreamRelay, they get their own node.
 
-The web dashboard is first-class. An optional Windows [Tauri companion](docs/DESKTOP.md) exists for chat overlay; there is no Electron client and no requirement to use the desktop app for day-to-day streaming.
+The web dashboard is first-class. An optional Windows [Tauri companion](docs/DESKTOP.md) exists for chat overlay, but it is **under testing** — there is no Electron client and no requirement to use the desktop app for day-to-day streaming.
+
+---
+
+## Beta — what is solid vs still moving
+
+Expect rough edges, behaviour changes, and incomplete surfaces. Treat live shows as “works on our nodes, still evolving,” not as a finished commercial suite.
+
+| Area | Today | Expect |
+|------|--------|--------|
+| **Ingest + multistream copy** | Main path — MediaMTX, destinations, Off/On, OBS recycle | Keep improving stability and edge cases |
+| **Live Manager / Connect / Omnix Link** | Usable for Create/Start and pairing | Provider quirks, OAuth verification, and UX still in flight |
+| **YouTube vertical** | Manual Studio Dual / Encoder paste (API limit) | Workflow polish; API still cannot fully automate Dual |
+| **Chat** (Twitch / YouTube / Kick) | Optional, env-driven; works when configured | Not feature-complete — reply UX, reconnect, and platform coverage will change |
+| **Mobile chat PWA** (`/chat.html`) | Early companion for read/reply | More polish and install behaviour ahead |
+| **Desktop companion** (Tauri) | Optional Windows build + overlay | **Not** a finished product — under testing; web dashboard remains the real UI |
+| **Transcode / CFR** (`TWITCH_TRANSCODE`, `KICK_TRANSCODE`) | Escape hatches for specific platform issues | Encoding paths will get more options and tuning in future updates — default stays **copy** |
+| **Docs / eggs / GHCR** | Shipping and iterating | Ports, images, and guides may shift as we harden deploy |
+
+If something feels half-built, it probably is — report it; that is expected in beta.
 
 ---
 
@@ -100,16 +121,22 @@ Same host and RTMP port; different stream keys. Destinations choose feed **main*
 
 ## Features
 
+**Shipped and in daily use**
+
 - Multistream to Twitch, YouTube, Kick, and custom RTMP
 - Dual feed (main 16:9 + vertical 9:16)
 - Live Manager (AIO / Custom titles, presets, Create / Start / End for connected platforms)
 - Connect Google / Twitch / Kick (panel, or via Omnix Link)
 - Encrypted destination keys; keys masked in the UI
-- Optional multi-platform chat in the dashboard
-- Mobile chat PWA at `/chat.html`
-- Optional Windows desktop companion + chat overlay
 - Pterodactyl egg + published GHCR image
 - Adaptive ports (`SERVER_PORT` / `RTMP_PORT` / `SRT_PORT`) for Wings allocations that are not classic 1935/8890
+
+**Present, but beta / unfinished**
+
+- Optional multi-platform chat in the dashboard (usable; not complete)
+- Mobile chat PWA at `/chat.html` (early)
+- Optional Windows desktop companion + chat overlay (under testing — not required)
+- Transcode / CFR escape hatches for Twitch and Kick (will gain more options later)
 
 ---
 
@@ -268,7 +295,7 @@ Privacy detail: [docs/PRIVACY-CONNECT.md](docs/PRIVACY-CONNECT.md).
 
 ## Chat (optional)
 
-Video relay works with all chat fields empty. To enable chat, set egg env (or Compose `.env`) and **restart** the panel:
+**Beta.** Chat is optional and not feature-complete. Video relay works with all chat fields empty. When you do enable it, set egg env (or Compose `.env`) and **restart** the panel:
 
 | Platform | Variables |
 |----------|-----------|
@@ -276,16 +303,18 @@ Video relay works with all chat fields empty. To enable chat, set egg env (or Co
 | YouTube | `YOUTUBE_LIVE_CHAT_ID` + API key or OAuth from Connect |
 | Kick | `KICK_CHANNEL` (+ `KICK_ACCESS_TOKEN` to send replies) |
 
-Chat appears under Connection in the dashboard (minimized when connected). Help (**?**) covers OBS + chat setup.
+Chat appears under Connection in the dashboard (minimized when connected). Help (**?**) covers OBS + chat setup. Expect reconnect quirks, uneven platform behaviour, and UI changes as this area is still under development.
 
 ---
 
 ## Mobile chat and desktop companion
 
-| Surface | What it is |
-|---------|------------|
-| **`/chat.html`** | Phone / tablet PWA — read chat, filter platforms, reply. Same bootstrap login. [docs/MOBILE-CHAT.md](docs/MOBILE-CHAT.md) |
-| **Desktop (Tauri)** | Optional Windows companion + always-on-top chat overlay. Web panel remains primary. [docs/DESKTOP.md](docs/DESKTOP.md) |
+Both are **early / under testing**. The browser dashboard is the supported control surface.
+
+| Surface | What it is | Status |
+|---------|------------|--------|
+| **`/chat.html`** | Phone / tablet PWA — read chat, filter platforms, reply. Same bootstrap login. [docs/MOBILE-CHAT.md](docs/MOBILE-CHAT.md) | Beta companion — useful, not finished |
+| **Desktop (Tauri)** | Optional Windows app + always-on-top chat overlay. [docs/DESKTOP.md](docs/DESKTOP.md) | Under testing — not a shipping “Omnix Desktop product” yet; web panel stays first-class |
 
 ---
 
@@ -347,14 +376,16 @@ Optional volume overrides on eggs: `data/ports.env`, `data/public_host`, operato
 
 ## Encoding and transcode
 
-**Default for every destination:** FFmpeg **`-c copy`** (passthrough). That keeps CPU low and quality identical to OBS.
+**Default for every destination:** FFmpeg **`-c copy`** (passthrough). That keeps CPU low and quality identical to OBS. Copy is the stable product path.
+
+Transcode / CFR flags are **beta escape hatches**. They exist for known platform pain (Twitch VFR / Error #1000, Kick bitrate ceilings). Encoding options, presets, and tuning will get more updates as we continue testing — do not treat them as a finished encoder product.
 
 | Flag | When to use |
 |------|-------------|
 | `TWITCH_TRANSCODE=1` | Twitch rejects VFR / odd timing (e.g. Error #1000) — shared CFR 1080p60 path |
 | `KICK_TRANSCODE=1` | Only if Kick needs a light H.264 re-encode (≤ ~8000 kbps). Default remains copy; wrong re-encode can show “live” with a blank picture |
 
-Do not turn general VPS “always transcode” on for YouTube/Twitch/custom — copy is the product path.
+Do not turn general VPS “always transcode” on for YouTube/Twitch/custom.
 
 ---
 
@@ -420,6 +451,8 @@ docs/            Guides (vertical, Connect, YouTube, privacy, GHCR, …)
 ---
 
 ## Support and license
+
+Omnix StreamRelay is **beta**: open issues, weird edge cases, and unfinished companions (chat, mobile PWA, desktop, richer transcode) are expected. Feedback helps; pin versions if you need a known-good image for a live show.
 
 - Issues and source: [github.com/MohFarzin/Omnix-StreamRelay](https://github.com/MohFarzin/Omnix-StreamRelay)
 - Email: [admin@omnixstudio.xyz](mailto:admin@omnixstudio.xyz)
